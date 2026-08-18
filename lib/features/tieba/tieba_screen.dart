@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/gestures.dart';
@@ -31,6 +33,7 @@ class _TiebaScreenState extends ConsumerState<TiebaScreen>
   int _page = 0;
   int _generation = 0;
   Object? _error;
+  StreamSubscription<NativeEventDto>? _nativeEventSubscription;
 
   @override
   bool get wantKeepAlive => true;
@@ -40,11 +43,23 @@ class _TiebaScreenState extends ConsumerState<TiebaScreen>
     super.initState();
     _forumName = ref.read(appSettingsProvider).tiebaHomeForumName;
     _scrollController.addListener(_onScroll);
+    _nativeEventSubscription = ref
+        .read(cithubPlatformProvider)
+        .events
+        .where((event) => event.source == 'tieba')
+        .listen((event) {
+          if (!mounted ||
+              (event.stage != 'signedIn' && event.stage != 'signedOut')) {
+            return;
+          }
+          unawaited(_resetAndLoad());
+        });
     WidgetsBinding.instance.addPostFrameCallback((_) => _resetAndLoad());
   }
 
   @override
   void dispose() {
+    _nativeEventSubscription?.cancel();
     _scrollController
       ..removeListener(_onScroll)
       ..dispose();
@@ -632,20 +647,17 @@ class _ThreadScreenState extends ConsumerState<ThreadScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      toolbarHeight: 68,
-      titleSpacing: 8,
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            widget.thread.forumName.isEmpty ? '贴吧' : widget.thread.forumName,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          Text('校园贴吧', style: Theme.of(context).textTheme.bodySmall),
-        ],
+      toolbarHeight: 56,
+      centerTitle: false,
+      titleSpacing: 0,
+      title: Text(
+        widget.thread.forumName.isEmpty
+            ? '贴吧'
+            : displayTiebaForumName(widget.thread.forumName),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.titleMedium
+            ?.copyWith(fontWeight: FontWeight.w600, letterSpacing: -0.2),
       ),
       actions: [
         if (_showScrollToTop)

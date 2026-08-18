@@ -16,6 +16,15 @@ public enum CithubNativeError: LocalizedError, Sendable {
             return message
         }
     }
+
+    public var code: String {
+        switch self {
+        case .invalidResponse: "invalidResponse"
+        case .requestFailed: "requestFailed"
+        case .loginRequired: "loginRequired"
+        case .invalidInput: "invalidInput"
+        }
+    }
 }
 
 public protocol SecretStore: Sendable {

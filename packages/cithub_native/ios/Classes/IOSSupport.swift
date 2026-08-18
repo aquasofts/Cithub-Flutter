@@ -136,6 +136,13 @@ func runNative<T>(
         do {
             let value = try await operation()
             await MainActor.run { completion(.success(value)) }
+        } catch let error as CithubNativeError {
+            let pigeonError = PigeonError(
+                code: error.code,
+                message: error.localizedDescription,
+                details: nil
+            )
+            await MainActor.run { completion(.failure(pigeonError)) }
         } catch {
             await MainActor.run { completion(.failure(error)) }
         }

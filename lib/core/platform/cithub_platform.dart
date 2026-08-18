@@ -76,6 +76,9 @@ class PigeonCithubPlatform implements CithubPlatform {
   final _update = UpdateHostApi();
   final _settings = SettingsHostApi();
   final _logs = RuntimeLogHostApi();
+  late final Stream<NativeEventDto> _events = native
+      .events()
+      .asBroadcastStream();
 
   @override
   Future<NativeCapabilities> capabilities() => _webVpn.getCapabilities();
@@ -215,7 +218,7 @@ class PigeonCithubPlatform implements CithubPlatform {
   @override
   Future<bool> setThemedIcon(bool enabled) => _settings.setThemedIcon(enabled);
   @override
-  Stream<NativeEventDto> get events => native.events();
+  Stream<NativeEventDto> get events => _events;
 }
 
 final cithubPlatformProvider = Provider<CithubPlatform>(

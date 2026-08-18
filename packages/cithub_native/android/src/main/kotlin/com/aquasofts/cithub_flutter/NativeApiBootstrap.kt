@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import com.aquasofts.cithub_flutter.native.AcademicHostApi
 import com.aquasofts.cithub_flutter.native.EventsStreamHandler
+import com.aquasofts.cithub_flutter.native.FlutterError
 import com.aquasofts.cithub_flutter.native.NativeEventDto
 import com.aquasofts.cithub_flutter.native.PigeonEventSink
 import com.aquasofts.cithub_flutter.native.RuntimeLogHostApi
@@ -88,7 +89,20 @@ internal fun <T> runAsync(
     block: () -> T,
 ) {
     executor.execute {
-        val result = runCatching(block)
+        val result = try {
+            Result.success(block())
+        } catch (error: Throwable) {
+            Result.failure(error.toFlutterError())
+        }
         mainHandler.post { callback(result) }
     }
+}
+
+private fun Throwable.toFlutterError(): FlutterError {
+    val code = when (this) {
+        is AcademicLoginRequired -> "loginRequired"
+        is IllegalArgumentException -> "invalidInput"
+        else -> "requestFailed"
+    }
+    return FlutterError(code, message?.takeIf(String::isNotBlank) ?: "操作失败")
 }

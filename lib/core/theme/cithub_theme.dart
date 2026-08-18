@@ -19,6 +19,7 @@ ThemeData buildCithubTheme(AppSettings settings, Brightness brightness) {
     appBarTheme: AppBarTheme(
       elevation: 0,
       scrolledUnderElevation: 0,
+      centerTitle: false,
       backgroundColor: surface,
       surfaceTintColor: Colors.transparent,
     ),

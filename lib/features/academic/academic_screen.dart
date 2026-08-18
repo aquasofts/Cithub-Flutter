@@ -7,6 +7,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../core/native/cithub_api.g.dart';
 import '../../core/platform/cithub_platform.dart';
+import '../../core/utils/user_facing_error.dart';
 
 class AcademicFeature {
   const AcademicFeature(
@@ -75,6 +76,8 @@ class AcademicScreen extends ConsumerStatefulWidget {
 class _AcademicScreenState extends ConsumerState<AcademicScreen>
     with AutomaticKeepAliveClientMixin {
   late Future<WebVpnSessionDto> _session;
+  WebVpnSessionDto? _latestSession;
+  Object? _sessionError;
   List<AcademicFeature> _features = [...academicFeatures];
 
   @override
@@ -83,7 +86,9 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen>
   @override
   void initState() {
     super.initState();
-    _session = ref.read(cithubPlatformProvider).initializeWebVpn();
+    _session = _trackSession(
+      ref.read(cithubPlatformProvider).initializeWebVpn(),
+    );
     _restoreFeatureOrder();
   }
 
@@ -105,9 +110,45 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen>
     setState(() => _features = ordered);
   }
 
-  void _setSession(Future<WebVpnSessionDto> value) {
+  Future<WebVpnSessionDto> _trackSession(
+    Future<WebVpnSessionDto> value, {
+    bool preserveOnError = false,
+    Future<WebVpnSessionDto> Function()? recoverOnError,
+  }) async {
+    try {
+      final session = await value;
+      _latestSession = session;
+      if (mounted && _sessionError != null) {
+        setState(() => _sessionError = null);
+      }
+      return session;
+    } catch (error) {
+      var fallback = preserveOnError ? _latestSession : null;
+      if (recoverOnError != null) {
+        try {
+          fallback = await recoverOnError();
+        } catch (_) {
+          // Keep the last usable form if refreshing the captcha also fails.
+        }
+      }
+      if (fallback == null) rethrow;
+      _latestSession = fallback;
+      if (mounted) setState(() => _sessionError = error);
+      return fallback;
+    }
+  }
+
+  void _setSession(
+    Future<WebVpnSessionDto> value, {
+    Future<WebVpnSessionDto> Function()? recoverOnError,
+  }) {
     setState(() {
-      _session = value;
+      _sessionError = null;
+      _session = _trackSession(
+        value,
+        preserveOnError: true,
+        recoverOnError: recoverOnError,
+      );
     });
   }
 
@@ -166,11 +207,16 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen>
                 sliver: SliverToBoxAdapter(
                   child: WebVpnLoginPanel(
                     session: session,
+                    error: _sessionError,
                     loading:
                         snapshot.connectionState == ConnectionState.waiting,
-                    onLogin: (request) => _setSession(
-                      ref.read(cithubPlatformProvider).loginWebVpn(request),
-                    ),
+                    onLogin: (request) {
+                      final platform = ref.read(cithubPlatformProvider);
+                      _setSession(
+                        platform.loginWebVpn(request),
+                        recoverOnError: platform.refreshWebVpnCaptcha,
+                      );
+                    },
                     onRefreshCaptcha: () => _setSession(
                       ref.read(cithubPlatformProvider).refreshWebVpnCaptcha(),
                     ),
@@ -220,18 +266,58 @@ class _AcademicSessionSliver extends ConsumerStatefulWidget {
 class _AcademicSessionSliverState
     extends ConsumerState<_AcademicSessionSliver> {
   late Future<WebVpnSessionDto> _session;
+  WebVpnSessionDto? _latestSession;
+  Object? _sessionError;
 
   @override
   void initState() {
     super.initState();
-    _session = ref
-        .read(cithubPlatformProvider)
-        .initializeAcademic(widget.webVpnSession.user?.username ?? '');
+    _session = _trackSession(
+      ref
+          .read(cithubPlatformProvider)
+          .initializeAcademic(widget.webVpnSession.user?.username ?? ''),
+    );
   }
 
-  void _set(Future<WebVpnSessionDto> value) {
+  Future<WebVpnSessionDto> _trackSession(
+    Future<WebVpnSessionDto> value, {
+    bool preserveOnError = false,
+    Future<WebVpnSessionDto> Function()? recoverOnError,
+  }) async {
+    try {
+      final session = await value;
+      _latestSession = session;
+      if (mounted && _sessionError != null) {
+        setState(() => _sessionError = null);
+      }
+      return session;
+    } catch (error) {
+      var fallback = preserveOnError ? _latestSession : null;
+      if (recoverOnError != null) {
+        try {
+          fallback = await recoverOnError();
+        } catch (_) {
+          // Keep the last usable form if refreshing the captcha also fails.
+        }
+      }
+      if (fallback == null) rethrow;
+      _latestSession = fallback;
+      if (mounted) setState(() => _sessionError = error);
+      return fallback;
+    }
+  }
+
+  void _set(
+    Future<WebVpnSessionDto> value, {
+    Future<WebVpnSessionDto> Function()? recoverOnError,
+  }) {
     setState(() {
-      _session = value;
+      _sessionError = null;
+      _session = _trackSession(
+        value,
+        preserveOnError: true,
+        recoverOnError: recoverOnError,
+      );
     });
   }
 
@@ -265,14 +351,20 @@ class _AcademicSessionSliverState
           sliver: SliverToBoxAdapter(
             child: WebVpnLoginPanel(
               session: academic,
+              error: _sessionError,
               loading: snapshot.connectionState == ConnectionState.waiting,
               title: '登录教务系统',
               description: '教务账号独立登录，密码只在本机加密保存。',
               usernameLabel: '教务系统账号',
               passwordLabel: '教务系统密码',
               icon: Icons.school_outlined,
-              onLogin: (request) =>
-                  _set(ref.read(cithubPlatformProvider).loginAcademic(request)),
+              onLogin: (request) {
+                final platform = ref.read(cithubPlatformProvider);
+                _set(
+                  platform.loginAcademic(request),
+                  recoverOnError: platform.refreshAcademicCaptcha,
+                );
+              },
               onRefreshCaptcha: () => _set(
                 ref.read(cithubPlatformProvider).refreshAcademicCaptcha(),
               ),
@@ -358,6 +450,7 @@ class WebVpnLoginPanel extends StatefulWidget {
     this.icon = Icons.shield_outlined,
     this.onSelectSavedAccount,
     this.onForgetSavedAccount,
+    this.error,
   });
   final WebVpnSessionDto session;
   final bool loading;
@@ -370,6 +463,7 @@ class WebVpnLoginPanel extends StatefulWidget {
   final IconData icon;
   final ValueChanged<String>? onSelectSavedAccount;
   final ValueChanged<String>? onForgetSavedAccount;
+  final Object? error;
 
   @override
   State<WebVpnLoginPanel> createState() => _WebVpnLoginPanelState();
@@ -455,6 +549,38 @@ class _WebVpnLoginPanelState extends State<WebVpnLoginPanel> {
                     ),
                   ],
                 ),
+                if (widget.error case final error?) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    key: const Key('academic-login-error'),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.errorContainer,
+                      borderRadius: BorderRadius.circular(11),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.error_outline,
+                          size: 20,
+                          color: Theme.of(context).colorScheme.onErrorContainer,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            userFacingError(error),
+                            style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onErrorContainer,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 18),
                 if (widget.session.savedAccounts.isNotEmpty) ...[
                   Text('已保存账号', style: Theme.of(context).textTheme.labelLarge),
@@ -604,7 +730,7 @@ class _WebVpnLoginPanelState extends State<WebVpnLoginPanel> {
                 CheckboxListTile(
                   value: _remember,
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('使用 Android Keystore 在本机加密保存密码'),
+                  title: const Text('在本机安全存储中加密保存密码'),
                   onChanged: (value) =>
                       setState(() => _remember = value ?? false),
                 ),
@@ -1479,13 +1605,29 @@ class _AcademicError extends StatelessWidget {
   final VoidCallback onRetry;
   @override
   Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text('连接失败：$error'),
-        const SizedBox(height: 12),
-        FilledButton(onPressed: onRetry, child: const Text('重试')),
-      ],
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.cloud_off_outlined,
+              size: 36,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              userFacingError(error, fallback: '暂时无法连接服务'),
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+            const SizedBox(height: 16),
+            FilledButton(onPressed: onRetry, child: const Text('重试')),
+          ],
+        ),
+      ),
     ),
   );
 }

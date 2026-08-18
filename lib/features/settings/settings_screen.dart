@@ -408,7 +408,7 @@ class _TiebaSettingsScreenState extends ConsumerState<TiebaSettingsScreen> {
           const ListTile(
             leading: Icon(Icons.security),
             title: Text('账号安全'),
-            subtitle: Text('Cookie 与 token 使用 Android Keystore 加密，不明文写入 Room'),
+            subtitle: Text('Cookie 与 token 使用系统安全存储加密'),
           ),
         ],
       ),
