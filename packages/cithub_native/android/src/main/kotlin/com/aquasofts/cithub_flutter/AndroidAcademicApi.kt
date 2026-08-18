@@ -35,6 +35,9 @@ internal class AndroidAcademicApi(
     override fun initialize(webVpnUsername: String, callback: (Result<WebVpnSessionDto>) -> Unit) =
         runAsync(executor, mainHandler, callback) {
             check(state.webVpnSignedIn) { "请先登录 WebVPN" }
+            if (client.routeForUsername(webVpnUsername)) {
+                logs.append("academic", "Selected academic server for account $webVpnUsername")
+            }
             val restored = client.initialize()
             if (restored != null) {
                 terms = restored
@@ -60,6 +63,14 @@ internal class AndroidAcademicApi(
         runAsync(executor, mainHandler, callback) {
             check(state.webVpnSignedIn) { "请先登录 WebVPN" }
             val username = request.username.trim()
+            require(username.isNotBlank()) { "请输入教务系统账号" }
+            if (client.routeForUsername(username)) {
+                state.academicSignedIn = false
+                state.academicUsername = username
+                refreshCaptchaBlocking()
+                logs.append("academic", "Switched academic server for account $username")
+                return@runAsync session("账号对应的教务服务器已切换，请核对新验证码后重新登录")
+            }
             val password = if (request.useSavedPassword) {
                 state.secureStore.get("academic.password.$username")
                     ?: error("保存的教务密码不可用，请重新输入")
@@ -175,9 +186,10 @@ internal class AndroidAcademicApi(
 
     private fun syncWebViewCookies() {
         val manager = CookieManager.getInstance()
+        val origin = client.webOrigin()
         client.cookieHeader().split(';').map(String::trim).filter(String::isNotBlank).forEach { cookie ->
             manager.setCookie("https://webvpn.ccit.edu.cn/", "$cookie; Path=/; Secure")
-            manager.setCookie("https://http-10-198-47-148-8080.webvpn.ccit.edu.cn/", "$cookie; Path=/; Secure")
+            manager.setCookie(origin, "$cookie; Path=/; Secure")
         }
         manager.flush()
     }

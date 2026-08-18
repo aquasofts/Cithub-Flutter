@@ -1,5 +1,5 @@
 name: cithub_native
-description: Repository-local Android protocol and security plugin for Cithub Flutter.
+description: Repository-local Android and iOS protocol and security plugin for Cithub Flutter.
 version: 1.0.0
 publish_to: none
 
@@ -18,4 +18,6 @@ flutter:
     platforms:
       android:
         package: com.aquasofts.cithub_flutter
+        pluginClass: CithubNativePlugin
+      ios:
         pluginClass: CithubNativePlugin

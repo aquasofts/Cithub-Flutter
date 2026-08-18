@@ -1,10 +1,10 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
-import 'package:photo_view/photo_view.dart';
 
 import '../../core/native/cithub_api.g.dart';
 import '../../core/platform/cithub_platform.dart';
@@ -1350,6 +1350,21 @@ class _TiebaContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final images = content
+        .where((item) => item.kind == 'image' && item.url.isNotEmpty)
+        .toList();
+    final imageRequests = List.generate(images.length, (index) {
+      final image = images[index];
+      return TiebaImageRequestDto(
+        url: image.originalUrl.isEmpty ? image.url : image.originalUrl,
+        threadId: int.tryParse(threadId) ?? 0,
+        postId: int.tryParse(postId) ?? 0,
+        forumId: forumId,
+        forumName: forumName,
+        imageIndex: index + 1,
+        seeOriginalPosterOnly: false,
+      );
+    });
     var imageIndex = 0;
     final blocks = <Widget>[];
     final inlineContent = <TiebaContentDto>[];
@@ -1380,32 +1395,22 @@ class _TiebaContent extends ConsumerWidget {
         continue;
       }
       flushInlineContent();
-      imageIndex++;
       final currentIndex = imageIndex;
+      imageIndex++;
       blocks.add(
         Padding(
           padding: const EdgeInsets.only(top: 10),
           child: InkWell(
-            onTap: () async {
-              final original = await ref
-                  .read(cithubPlatformProvider)
-                  .resolveOriginalImage(
-                    TiebaImageRequestDto(
-                      url: item.originalUrl.isEmpty
-                          ? item.url
-                          : item.originalUrl,
-                      threadId: int.tryParse(threadId) ?? 0,
-                      postId: int.tryParse(postId) ?? 0,
-                      forumId: forumId,
-                      forumName: forumName,
-                      imageIndex: currentIndex,
-                      seeOriginalPosterOnly: false,
-                    ),
-                  );
-              if (!context.mounted) return;
+            key: Key('tieba-floor-image-$currentIndex'),
+            onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => _TiebaImageScreen(url: original),
+                  builder: (_) => _TiebaImageScreen(
+                    previewUrls: images.map((image) => image.url).toList(),
+                    requests: imageRequests,
+                    initialIndex: currentIndex,
+                    platform: ref.read(cithubPlatformProvider),
+                  ),
                 ),
               );
             },
@@ -1819,13 +1824,81 @@ class _ProfileMetric extends StatelessWidget {
   );
 }
 
-class _TiebaImageScreen extends StatelessWidget {
-  const _TiebaImageScreen({required this.url});
+class _TiebaImageScreen extends StatefulWidget {
+  const _TiebaImageScreen({
+    required this.previewUrls,
+    required this.requests,
+    required this.initialIndex,
+    required this.platform,
+  }) : assert(previewUrls.length == requests.length),
+       assert(previewUrls.length > 0),
+       assert(initialIndex >= 0 && initialIndex < previewUrls.length);
 
-  final String url;
+  final List<String> previewUrls;
+  final List<TiebaImageRequestDto> requests;
+  final int initialIndex;
+  final CithubPlatform platform;
 
-  Future<void> _save(BuildContext context) async {
+  @override
+  State<_TiebaImageScreen> createState() => _TiebaImageScreenState();
+}
+
+class _TiebaImageScreenState extends State<_TiebaImageScreen> {
+  late final PageController _pageController;
+  late final List<String> _urls;
+  late final List<Future<String>?> _resolutionFutures;
+  late int _index;
+  bool _currentImageZoomed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _index = widget.initialIndex;
+    _pageController = PageController(initialPage: _index);
+    _urls = List.of(widget.previewUrls);
+    _resolutionFutures = List.filled(widget.previewUrls.length, null);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _resolveAround(_index));
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Future<String> _resolve(int index) {
+    return _resolutionFutures[index] ??= () async {
+      try {
+        final resolved = await widget.platform.resolveOriginalImage(
+          widget.requests[index],
+        );
+        if (resolved.isNotEmpty && resolved != _urls[index] && mounted) {
+          setState(() => _urls[index] = resolved);
+        }
+        return resolved.isEmpty ? _urls[index] : resolved;
+      } catch (_) {
+        return _urls[index];
+      }
+    }();
+  }
+
+  void _resolveAround(int index) {
+    for (var candidate = index - 1; candidate <= index + 1; candidate++) {
+      if (candidate >= 0 && candidate < _urls.length) _resolve(candidate);
+    }
+  }
+
+  void _onPageChanged(int index) {
+    setState(() {
+      _index = index;
+      _currentImageZoomed = false;
+    });
+    _resolveAround(index);
+  }
+
+  Future<void> _save() async {
     try {
+      final url = await _resolve(_index);
       final response = await http.get(Uri.parse(url));
       if (response.statusCode != 200) {
         throw StateError('HTTP ${response.statusCode}');
@@ -1835,31 +1908,215 @@ class _TiebaImageScreen extends StatelessWidget {
         fileName: 'cithub-${DateTime.now().millisecondsSinceEpoch}.jpg',
         bytes: response.bodyBytes,
       );
-      if (context.mounted && path != null) _message(context, '图片已保存');
+      if (mounted && path != null) _message(context, '图片已保存');
     } catch (error) {
-      if (context.mounted) _message(context, '图片保存失败：$error');
+      if (mounted) _message(context, '图片保存失败：$error');
     }
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: Colors.black,
-    appBar: AppBar(
+  Widget build(BuildContext context) {
+    final count = _urls.length;
+    return Scaffold(
       backgroundColor: Colors.black,
-      foregroundColor: Colors.white,
-      title: const Text('原图'),
-      actions: [
-        IconButton(
-          tooltip: '保存图片',
-          onPressed: () => _save(context),
-          icon: const Icon(Icons.download),
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: Text(count == 1 ? '原图' : '${_index + 1} / $count'),
+        actions: [
+          IconButton(
+            tooltip: '保存图片',
+            onPressed: _save,
+            icon: const Icon(Icons.download),
+          ),
+        ],
+      ),
+      body: PageView.builder(
+        key: const Key('tieba-image-gallery'),
+        controller: _pageController,
+        physics: _currentImageZoomed
+            ? const NeverScrollableScrollPhysics()
+            : const PageScrollPhysics(),
+        itemCount: count,
+        onPageChanged: _onPageChanged,
+        itemBuilder: (context, index) => _FocusedPhotoView(
+          url: _urls[index],
+          index: index,
+          onZoomChanged: index == _index
+              ? (zoomed) {
+                  if (_currentImageZoomed != zoomed) {
+                    setState(() => _currentImageZoomed = zoomed);
+                  }
+                }
+              : null,
         ),
-      ],
-    ),
-    body: PhotoView(
-      imageProvider: CachedNetworkImageProvider(url),
-      minScale: PhotoViewComputedScale.contained,
-      maxScale: PhotoViewComputedScale.covered * 4,
+      ),
+    );
+  }
+}
+
+class _FocusedPhotoView extends StatefulWidget {
+  const _FocusedPhotoView({
+    required this.url,
+    required this.index,
+    this.onZoomChanged,
+  });
+
+  final String url;
+  final int index;
+  final ValueChanged<bool>? onZoomChanged;
+
+  @override
+  State<_FocusedPhotoView> createState() => _FocusedPhotoViewState();
+}
+
+class _FocusedPhotoViewState extends State<_FocusedPhotoView> {
+  static const _doubleTapScale = 2.5;
+  static const _zoomThreshold = 1.01;
+
+  final _transformationController = TransformationController();
+  final _activePointers = <int>{};
+  int? _tapPointer;
+  Offset? _tapDownPosition;
+  Duration? _tapDownTime;
+  Offset? _previousTapPosition;
+  Duration? _previousTapTime;
+  bool _tapCandidate = false;
+  bool _zoomed = false;
+
+  @override
+  void dispose() {
+    _transformationController.dispose();
+    super.dispose();
+  }
+
+  void _setZoomed(bool value) {
+    if (_zoomed == value) return;
+    setState(() => _zoomed = value);
+    widget.onZoomChanged?.call(value);
+  }
+
+  void _handleDoubleTap(Offset focalPoint) {
+    final currentScale = _transformationController.value.getMaxScaleOnAxis();
+    if (currentScale > _zoomThreshold) {
+      _setZoomed(false);
+      _transformationController.value = Matrix4.identity();
+      return;
+    }
+
+    final target = Matrix4.identity()
+      ..translateByDouble(
+        -focalPoint.dx * (_doubleTapScale - 1),
+        -focalPoint.dy * (_doubleTapScale - 1),
+        0,
+        1,
+      )
+      ..scaleByDouble(_doubleTapScale, _doubleTapScale, 1, 1);
+    _setZoomed(true);
+    _transformationController.value = target;
+  }
+
+  void _handleInteractionUpdate(ScaleUpdateDetails details) {
+    _setZoomed(
+      _transformationController.value.getMaxScaleOnAxis() > _zoomThreshold,
+    );
+  }
+
+  void _handlePointerDown(PointerDownEvent event) {
+    _activePointers.add(event.pointer);
+    if (_activePointers.length == 1) {
+      _tapPointer = event.pointer;
+      _tapDownPosition = event.localPosition;
+      _tapDownTime = event.timeStamp;
+      _tapCandidate = true;
+      return;
+    }
+    _tapCandidate = false;
+    _previousTapPosition = null;
+    _previousTapTime = null;
+  }
+
+  void _handlePointerMove(PointerMoveEvent event) {
+    if (event.pointer != _tapPointer || !_tapCandidate) return;
+    final start = _tapDownPosition;
+    if (start == null || (event.localPosition - start).distance > kTouchSlop) {
+      _tapCandidate = false;
+    }
+  }
+
+  void _handlePointerUp(PointerUpEvent event) {
+    _activePointers.remove(event.pointer);
+    if (event.pointer != _tapPointer) return;
+    final downTime = _tapDownTime;
+    final isTap =
+        _tapCandidate &&
+        _activePointers.isEmpty &&
+        downTime != null &&
+        event.timeStamp - downTime < kLongPressTimeout;
+    _tapPointer = null;
+    _tapDownPosition = null;
+    _tapDownTime = null;
+    _tapCandidate = false;
+    if (!isTap) return;
+
+    final previousTime = _previousTapTime;
+    final previousPosition = _previousTapPosition;
+    final interval = previousTime == null
+        ? null
+        : event.timeStamp - previousTime;
+    if (interval != null &&
+        interval <= kDoubleTapTimeout &&
+        previousPosition != null &&
+        (event.localPosition - previousPosition).distance <= kDoubleTapSlop) {
+      _previousTapTime = null;
+      _previousTapPosition = null;
+      final focalPoint = event.localPosition;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _handleDoubleTap(focalPoint);
+      });
+      return;
+    }
+    _previousTapTime = event.timeStamp;
+    _previousTapPosition = event.localPosition;
+  }
+
+  void _handlePointerCancel(PointerCancelEvent event) {
+    _activePointers.remove(event.pointer);
+    if (event.pointer == _tapPointer) {
+      _tapPointer = null;
+      _tapDownPosition = null;
+      _tapDownTime = null;
+      _tapCandidate = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Listener(
+    behavior: HitTestBehavior.opaque,
+    onPointerDown: _handlePointerDown,
+    onPointerMove: _handlePointerMove,
+    onPointerUp: _handlePointerUp,
+    onPointerCancel: _handlePointerCancel,
+    child: InteractiveViewer(
+      key: Key('tieba-photo-view-${widget.index}'),
+      transformationController: _transformationController,
+      minScale: 1,
+      maxScale: 4,
+      panEnabled: _zoomed,
+      scaleEnabled: true,
+      onInteractionUpdate: _handleInteractionUpdate,
+      child: SizedBox.expand(
+        child: CachedNetworkImage(
+          imageUrl: widget.url,
+          fit: BoxFit.contain,
+          placeholder: (_, _) => const Center(
+            child: CircularProgressIndicator(color: Colors.white),
+          ),
+          errorWidget: (_, _, _) => const Center(
+            child: Icon(Icons.broken_image, color: Colors.white),
+          ),
+        ),
+      ),
     ),
   );
 }

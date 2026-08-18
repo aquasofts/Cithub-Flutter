@@ -124,4 +124,27 @@ void main() {
     expect(html, contains('https://www.ccit.edu.cn/__local/a.jpg'));
     expect(html, isNot(contains('http://unsafe.test')));
   });
+
+  test('article tables fit the viewport without horizontal scrolling', () {
+    const article = NewsArticle(
+      id: '6',
+      source: '通知公告',
+      title: '表格测试',
+      link: 'https://www.ccit.edu.cn/info/1.htm',
+      summary: '',
+      html: '''
+        <table style="width: 900px; min-width: 900px">
+          <tr><th style="width: 450px">服务类</th><th>金额</th></tr>
+          <tr><td>招标代理服务</td><td>10000元</td></tr>
+        </table>
+      ''',
+      publishedAt: null,
+      section: NewsSection.official,
+    );
+
+    final html = buildSafeNewsHtml(article);
+    expect(html, contains('table-layout: fixed'));
+    expect(html, contains('min-width: 0 !important'));
+    expect(html, isNot(contains('display: block; width: 100%')));
+  });
 }

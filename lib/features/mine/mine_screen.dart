@@ -41,9 +41,11 @@ class _MineScreenState extends ConsumerState<MineScreen>
     }
   }
 
-  void _refreshTieba() => setState(
-    () => _tieba = ref.read(cithubPlatformProvider).refreshTiebaAccount(),
-  );
+  void _refreshTieba() {
+    setState(() {
+      _tieba = ref.read(cithubPlatformProvider).refreshTiebaAccount();
+    });
+  }
 
   void _logoutTieba() => setState(() {
     _tieba = () async {
@@ -52,8 +54,11 @@ class _MineScreenState extends ConsumerState<MineScreen>
     }();
   });
 
-  void _logoutWebVpn() =>
-      setState(() => _webVpn = ref.read(cithubPlatformProvider).logoutWebVpn());
+  void _logoutWebVpn() {
+    setState(() {
+      _webVpn = ref.read(cithubPlatformProvider).logoutWebVpn();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +70,7 @@ class _MineScreenState extends ConsumerState<MineScreen>
           pinned: true,
           toolbarHeight: 72,
           titleSpacing: 20,
-          title: const Text('我的'),
+          title: const Text('个人信息'),
           actions: [
             IconButton(
               tooltip: '设置',
@@ -81,8 +86,6 @@ class _MineScreenState extends ConsumerState<MineScreen>
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
           sliver: SliverList.list(
             children: [
-              Text('个人信息', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 12),
               FutureBuilder<TiebaAccountDto?>(
                 future: _tieba,
                 builder: (_, snapshot) => Column(

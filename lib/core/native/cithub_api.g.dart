@@ -10,9 +10,9 @@ import 'package:flutter/services.dart';
 import 'package:meta/meta.dart' show immutable, protected, visibleForTesting;
 
 Object? _extractReplyValueOrThrow(
-  List<Object?>? replyList,
-  String channelName, {
-  required bool isNullValid,
+    List<Object?>? replyList,
+    String channelName, {
+    required bool isNullValid,
 }) {
   if (replyList == null) {
     throw PlatformException(
@@ -46,9 +46,8 @@ bool _deepEquals(Object? a, Object? b) {
   }
   if (a is List && b is List) {
     return a.length == b.length &&
-        a.indexed.every(
-          ((int, dynamic) item) => _deepEquals(item.$2, b[item.$1]),
-        );
+        a.indexed
+            .every(((int, dynamic) item) => _deepEquals(item.$2, b[item.$1]));
   }
   if (a is Map && b is Map) {
     if (a.length != b.length) {
@@ -97,7 +96,11 @@ int _deepHash(Object? value) {
   return value.hashCode;
 }
 
-enum CaptchaFlavor { autoCaptcha, manualCaptcha }
+
+enum CaptchaFlavor {
+  autoCaptcha,
+  manualCaptcha,
+}
 
 enum AuthStatus {
   initializing,
@@ -107,13 +110,35 @@ enum AuthStatus {
   actionRequired,
 }
 
-enum RequiredAccountAction { none, tfa, passwordReset, bindAccount }
+enum RequiredAccountAction {
+  none,
+  tfa,
+  passwordReset,
+  bindAccount,
+}
 
-enum TiebaSignOutcome { idle, running, success, alreadySigned, failed }
+enum TiebaSignOutcome {
+  idle,
+  running,
+  success,
+  alreadySigned,
+  failed,
+}
 
-enum TiebaModeratorRole { none, owner, assistant }
+enum TiebaModeratorRole {
+  none,
+  owner,
+  assistant,
+}
 
-enum UpdateStage { idle, checking, available, downloading, ready, failed }
+enum UpdateStage {
+  idle,
+  checking,
+  available,
+  downloading,
+  ready,
+  failed,
+}
 
 class NativeCapabilities {
   NativeCapabilities({
@@ -132,12 +157,16 @@ class NativeCapabilities {
   int versionCode;
 
   List<Object?> _toList() {
-    return <Object?>[flavor, captchaAutofillEnabled, versionName, versionCode];
+    return <Object?>[
+      flavor,
+      captchaAutofillEnabled,
+      versionName,
+      versionCode,
+    ];
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static NativeCapabilities decode(Object result) {
     result as List<Object?>;
@@ -158,10 +187,7 @@ class NativeCapabilities {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(flavor, other.flavor) &&
-        _deepEquals(captchaAutofillEnabled, other.captchaAutofillEnabled) &&
-        _deepEquals(versionName, other.versionName) &&
-        _deepEquals(versionCode, other.versionCode);
+    return _deepEquals(flavor, other.flavor) && _deepEquals(captchaAutofillEnabled, other.captchaAutofillEnabled) && _deepEquals(versionName, other.versionName) && _deepEquals(versionCode, other.versionCode);
   }
 
   @override
@@ -175,19 +201,24 @@ class NativeCapabilities {
 }
 
 class SavedAccountDto {
-  SavedAccountDto({required this.username, required this.lastUsedAtMillis});
+  SavedAccountDto({
+    required this.username,
+    required this.lastUsedAtMillis,
+  });
 
   String username;
 
   int lastUsedAtMillis;
 
   List<Object?> _toList() {
-    return <Object?>[username, lastUsedAtMillis];
+    return <Object?>[
+      username,
+      lastUsedAtMillis,
+    ];
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static SavedAccountDto decode(Object result) {
     result as List<Object?>;
@@ -206,8 +237,7 @@ class SavedAccountDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(username, other.username) &&
-        _deepEquals(lastUsedAtMillis, other.lastUsedAtMillis);
+    return _deepEquals(username, other.username) && _deepEquals(lastUsedAtMillis, other.lastUsedAtMillis);
   }
 
   @override
@@ -234,12 +264,15 @@ class CaptchaDto {
   String recognizedCode;
 
   List<Object?> _toList() {
-    return <Object?>[id, base64Image, recognizedCode];
+    return <Object?>[
+      id,
+      base64Image,
+      recognizedCode,
+    ];
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static CaptchaDto decode(Object result) {
     result as List<Object?>;
@@ -259,9 +292,7 @@ class CaptchaDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(id, other.id) &&
-        _deepEquals(base64Image, other.base64Image) &&
-        _deepEquals(recognizedCode, other.recognizedCode);
+    return _deepEquals(id, other.id) && _deepEquals(base64Image, other.base64Image) && _deepEquals(recognizedCode, other.recognizedCode);
   }
 
   @override
@@ -308,8 +339,7 @@ class LoginRequestDto {
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static LoginRequestDto decode(Object result) {
     result as List<Object?>;
@@ -332,12 +362,7 @@ class LoginRequestDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(username, other.username) &&
-        _deepEquals(password, other.password) &&
-        _deepEquals(captchaId, other.captchaId) &&
-        _deepEquals(captchaCode, other.captchaCode) &&
-        _deepEquals(rememberPassword, other.rememberPassword) &&
-        _deepEquals(useSavedPassword, other.useSavedPassword);
+    return _deepEquals(username, other.username) && _deepEquals(password, other.password) && _deepEquals(captchaId, other.captchaId) && _deepEquals(captchaCode, other.captchaCode) && _deepEquals(rememberPassword, other.rememberPassword) && _deepEquals(useSavedPassword, other.useSavedPassword);
   }
 
   @override
@@ -388,8 +413,7 @@ class UserInfoDto {
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static UserInfoDto decode(Object result) {
     result as List<Object?>;
@@ -413,13 +437,7 @@ class UserInfoDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(username, other.username) &&
-        _deepEquals(nickname, other.nickname) &&
-        _deepEquals(fullName, other.fullName) &&
-        _deepEquals(groups, other.groups) &&
-        _deepEquals(authType, other.authType) &&
-        _deepEquals(bindWechat, other.bindWechat) &&
-        _deepEquals(bindOtp, other.bindOtp);
+    return _deepEquals(username, other.username) && _deepEquals(nickname, other.nickname) && _deepEquals(fullName, other.fullName) && _deepEquals(groups, other.groups) && _deepEquals(authType, other.authType) && _deepEquals(bindWechat, other.bindWechat) && _deepEquals(bindOtp, other.bindOtp);
   }
 
   @override
@@ -470,8 +488,7 @@ class WebVpnSessionDto {
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static WebVpnSessionDto decode(Object result) {
     result as List<Object?>;
@@ -495,13 +512,7 @@ class WebVpnSessionDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(status, other.status) &&
-        _deepEquals(requiredAction, other.requiredAction) &&
-        _deepEquals(user, other.user) &&
-        _deepEquals(savedAccounts, other.savedAccounts) &&
-        _deepEquals(captcha, other.captcha) &&
-        _deepEquals(requiresCaptcha, other.requiresCaptcha) &&
-        _deepEquals(message, other.message);
+    return _deepEquals(status, other.status) && _deepEquals(requiredAction, other.requiredAction) && _deepEquals(user, other.user) && _deepEquals(savedAccounts, other.savedAccounts) && _deepEquals(captcha, other.captcha) && _deepEquals(requiresCaptcha, other.requiresCaptcha) && _deepEquals(message, other.message);
   }
 
   @override
@@ -528,12 +539,15 @@ class AcademicTermDto {
   bool selected;
 
   List<Object?> _toList() {
-    return <Object?>[value, label, selected];
+    return <Object?>[
+      value,
+      label,
+      selected,
+    ];
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static AcademicTermDto decode(Object result) {
     result as List<Object?>;
@@ -553,9 +567,7 @@ class AcademicTermDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(value, other.value) &&
-        _deepEquals(label, other.label) &&
-        _deepEquals(selected, other.selected);
+    return _deepEquals(value, other.value) && _deepEquals(label, other.label) && _deepEquals(selected, other.selected);
   }
 
   @override
@@ -582,7 +594,7 @@ class CourseGradeDto {
     required this.gradePoint,
     required this.generalElective,
     required this.originalScore,
-    required this.description,
+    required this.scoreDescription,
     required this.note,
     required this.retakeSemester,
     required this.assessmentMethod,
@@ -616,7 +628,7 @@ class CourseGradeDto {
 
   String originalScore;
 
-  String description;
+  String scoreDescription;
 
   String note;
 
@@ -646,7 +658,7 @@ class CourseGradeDto {
       gradePoint,
       generalElective,
       originalScore,
-      description,
+      scoreDescription,
       note,
       retakeSemester,
       assessmentMethod,
@@ -658,8 +670,7 @@ class CourseGradeDto {
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static CourseGradeDto decode(Object result) {
     result as List<Object?>;
@@ -676,7 +687,7 @@ class CourseGradeDto {
       gradePoint: result[9]! as String,
       generalElective: result[10]! as String,
       originalScore: result[11]! as String,
-      description: result[12]! as String,
+      scoreDescription: result[12]! as String,
       note: result[13]! as String,
       retakeSemester: result[14]! as String,
       assessmentMethod: result[15]! as String,
@@ -696,26 +707,7 @@ class CourseGradeDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(sequence, other.sequence) &&
-        _deepEquals(semester, other.semester) &&
-        _deepEquals(courseCode, other.courseCode) &&
-        _deepEquals(courseName, other.courseName) &&
-        _deepEquals(groupName, other.groupName) &&
-        _deepEquals(score, other.score) &&
-        _deepEquals(scoreMark, other.scoreMark) &&
-        _deepEquals(credit, other.credit) &&
-        _deepEquals(totalHours, other.totalHours) &&
-        _deepEquals(gradePoint, other.gradePoint) &&
-        _deepEquals(generalElective, other.generalElective) &&
-        _deepEquals(originalScore, other.originalScore) &&
-        _deepEquals(description, other.description) &&
-        _deepEquals(note, other.note) &&
-        _deepEquals(retakeSemester, other.retakeSemester) &&
-        _deepEquals(assessmentMethod, other.assessmentMethod) &&
-        _deepEquals(examType, other.examType) &&
-        _deepEquals(courseAttribute, other.courseAttribute) &&
-        _deepEquals(courseNature, other.courseNature) &&
-        _deepEquals(courseCategory, other.courseCategory);
+    return _deepEquals(sequence, other.sequence) && _deepEquals(semester, other.semester) && _deepEquals(courseCode, other.courseCode) && _deepEquals(courseName, other.courseName) && _deepEquals(groupName, other.groupName) && _deepEquals(score, other.score) && _deepEquals(scoreMark, other.scoreMark) && _deepEquals(credit, other.credit) && _deepEquals(totalHours, other.totalHours) && _deepEquals(gradePoint, other.gradePoint) && _deepEquals(generalElective, other.generalElective) && _deepEquals(originalScore, other.originalScore) && _deepEquals(scoreDescription, other.scoreDescription) && _deepEquals(note, other.note) && _deepEquals(retakeSemester, other.retakeSemester) && _deepEquals(assessmentMethod, other.assessmentMethod) && _deepEquals(examType, other.examType) && _deepEquals(courseAttribute, other.courseAttribute) && _deepEquals(courseNature, other.courseNature) && _deepEquals(courseCategory, other.courseCategory);
   }
 
   @override
@@ -724,7 +716,7 @@ class CourseGradeDto {
 
   @override
   String toString() {
-    return 'CourseGradeDto(sequence: $sequence, semester: $semester, courseCode: $courseCode, courseName: $courseName, groupName: $groupName, score: $score, scoreMark: $scoreMark, credit: $credit, totalHours: $totalHours, gradePoint: $gradePoint, generalElective: $generalElective, originalScore: $originalScore, description: $description, note: $note, retakeSemester: $retakeSemester, assessmentMethod: $assessmentMethod, examType: $examType, courseAttribute: $courseAttribute, courseNature: $courseNature, courseCategory: $courseCategory)';
+    return 'CourseGradeDto(sequence: $sequence, semester: $semester, courseCode: $courseCode, courseName: $courseName, groupName: $groupName, score: $score, scoreMark: $scoreMark, credit: $credit, totalHours: $totalHours, gradePoint: $gradePoint, generalElective: $generalElective, originalScore: $originalScore, scoreDescription: $scoreDescription, note: $note, retakeSemester: $retakeSemester, assessmentMethod: $assessmentMethod, examType: $examType, courseAttribute: $courseAttribute, courseNature: $courseNature, courseCategory: $courseCategory)';
   }
 }
 
@@ -745,12 +737,16 @@ class TimetablePeriodDto {
   String endTime;
 
   List<Object?> _toList() {
-    return <Object?>[index, label, startTime, endTime];
+    return <Object?>[
+      index,
+      label,
+      startTime,
+      endTime,
+    ];
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static TimetablePeriodDto decode(Object result) {
     result as List<Object?>;
@@ -771,10 +767,7 @@ class TimetablePeriodDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(index, other.index) &&
-        _deepEquals(label, other.label) &&
-        _deepEquals(startTime, other.startTime) &&
-        _deepEquals(endTime, other.endTime);
+    return _deepEquals(index, other.index) && _deepEquals(label, other.label) && _deepEquals(startTime, other.startTime) && _deepEquals(endTime, other.endTime);
   }
 
   @override
@@ -837,8 +830,7 @@ class TimetableCourseDto {
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static TimetableCourseDto decode(Object result) {
     result as List<Object?>;
@@ -865,16 +857,7 @@ class TimetableCourseDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(id, other.id) &&
-        _deepEquals(dayOfWeek, other.dayOfWeek) &&
-        _deepEquals(periodIndex, other.periodIndex) &&
-        _deepEquals(startSection, other.startSection) &&
-        _deepEquals(endSection, other.endSection) &&
-        _deepEquals(name, other.name) &&
-        _deepEquals(teacher, other.teacher) &&
-        _deepEquals(weeks, other.weeks) &&
-        _deepEquals(weekNumbers, other.weekNumbers) &&
-        _deepEquals(location, other.location);
+    return _deepEquals(id, other.id) && _deepEquals(dayOfWeek, other.dayOfWeek) && _deepEquals(periodIndex, other.periodIndex) && _deepEquals(startSection, other.startSection) && _deepEquals(endSection, other.endSection) && _deepEquals(name, other.name) && _deepEquals(teacher, other.teacher) && _deepEquals(weeks, other.weeks) && _deepEquals(weekNumbers, other.weekNumbers) && _deepEquals(location, other.location);
   }
 
   @override
@@ -929,8 +912,7 @@ class TimetableDto {
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static TimetableDto decode(Object result) {
     result as List<Object?>;
@@ -955,14 +937,7 @@ class TimetableDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(terms, other.terms) &&
-        _deepEquals(selectedTerm, other.selectedTerm) &&
-        _deepEquals(periods, other.periods) &&
-        _deepEquals(courses, other.courses) &&
-        _deepEquals(note, other.note) &&
-        _deepEquals(referenceDateIso, other.referenceDateIso) &&
-        _deepEquals(referenceWeek, other.referenceWeek) &&
-        _deepEquals(totalWeeks, other.totalWeeks);
+    return _deepEquals(terms, other.terms) && _deepEquals(selectedTerm, other.selectedTerm) && _deepEquals(periods, other.periods) && _deepEquals(courses, other.courses) && _deepEquals(note, other.note) && _deepEquals(referenceDateIso, other.referenceDateIso) && _deepEquals(referenceWeek, other.referenceWeek) && _deepEquals(totalWeeks, other.totalWeeks);
   }
 
   @override
@@ -1017,8 +992,7 @@ class SelectedCourseDto {
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static SelectedCourseDto decode(Object result) {
     result as List<Object?>;
@@ -1043,14 +1017,7 @@ class SelectedCourseDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(sequence, other.sequence) &&
-        _deepEquals(courseName, other.courseName) &&
-        _deepEquals(courseCode, other.courseCode) &&
-        _deepEquals(teacher, other.teacher) &&
-        _deepEquals(totalHours, other.totalHours) &&
-        _deepEquals(credit, other.credit) &&
-        _deepEquals(courseAttribute, other.courseAttribute) &&
-        _deepEquals(courseNature, other.courseNature);
+    return _deepEquals(sequence, other.sequence) && _deepEquals(courseName, other.courseName) && _deepEquals(courseCode, other.courseCode) && _deepEquals(teacher, other.teacher) && _deepEquals(totalHours, other.totalHours) && _deepEquals(credit, other.credit) && _deepEquals(courseAttribute, other.courseAttribute) && _deepEquals(courseNature, other.courseNature);
   }
 
   @override
@@ -1101,8 +1068,7 @@ class EvaluationBatchDto {
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static EvaluationBatchDto decode(Object result) {
     result as List<Object?>;
@@ -1126,13 +1092,7 @@ class EvaluationBatchDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(sequence, other.sequence) &&
-        _deepEquals(semester, other.semester) &&
-        _deepEquals(category, other.category) &&
-        _deepEquals(name, other.name) &&
-        _deepEquals(startDate, other.startDate) &&
-        _deepEquals(endDate, other.endDate) &&
-        _deepEquals(courseListPath, other.courseListPath);
+    return _deepEquals(sequence, other.sequence) && _deepEquals(semester, other.semester) && _deepEquals(category, other.category) && _deepEquals(name, other.name) && _deepEquals(startDate, other.startDate) && _deepEquals(endDate, other.endDate) && _deepEquals(courseListPath, other.courseListPath);
   }
 
   @override
@@ -1195,8 +1155,7 @@ class EvaluationCourseDto {
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static EvaluationCourseDto decode(Object result) {
     result as List<Object?>;
@@ -1223,16 +1182,7 @@ class EvaluationCourseDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(sequence, other.sequence) &&
-        _deepEquals(courseCode, other.courseCode) &&
-        _deepEquals(courseName, other.courseName) &&
-        _deepEquals(teacher, other.teacher) &&
-        _deepEquals(category, other.category) &&
-        _deepEquals(totalScore, other.totalScore) &&
-        _deepEquals(evaluated, other.evaluated) &&
-        _deepEquals(submitted, other.submitted) &&
-        _deepEquals(teachingHours, other.teachingHours) &&
-        _deepEquals(formPath, other.formPath);
+    return _deepEquals(sequence, other.sequence) && _deepEquals(courseCode, other.courseCode) && _deepEquals(courseName, other.courseName) && _deepEquals(teacher, other.teacher) && _deepEquals(category, other.category) && _deepEquals(totalScore, other.totalScore) && _deepEquals(evaluated, other.evaluated) && _deepEquals(submitted, other.submitted) && _deepEquals(teachingHours, other.teachingHours) && _deepEquals(formPath, other.formPath);
   }
 
   @override
@@ -1262,12 +1212,16 @@ class EvaluationOptionDto {
   bool selected;
 
   List<Object?> _toList() {
-    return <Object?>[id, label, score, selected];
+    return <Object?>[
+      id,
+      label,
+      score,
+      selected,
+    ];
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static EvaluationOptionDto decode(Object result) {
     result as List<Object?>;
@@ -1288,10 +1242,7 @@ class EvaluationOptionDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(id, other.id) &&
-        _deepEquals(label, other.label) &&
-        _deepEquals(score, other.score) &&
-        _deepEquals(selected, other.selected);
+    return _deepEquals(id, other.id) && _deepEquals(label, other.label) && _deepEquals(score, other.score) && _deepEquals(selected, other.selected);
   }
 
   @override
@@ -1318,12 +1269,15 @@ class EvaluationQuestionDto {
   List<EvaluationOptionDto> options;
 
   List<Object?> _toList() {
-    return <Object?>[id, title, options];
+    return <Object?>[
+      id,
+      title,
+      options,
+    ];
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static EvaluationQuestionDto decode(Object result) {
     result as List<Object?>;
@@ -1343,9 +1297,7 @@ class EvaluationQuestionDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(id, other.id) &&
-        _deepEquals(title, other.title) &&
-        _deepEquals(options, other.options);
+    return _deepEquals(id, other.id) && _deepEquals(title, other.title) && _deepEquals(options, other.options);
   }
 
   @override
@@ -1359,19 +1311,24 @@ class EvaluationQuestionDto {
 }
 
 class EvaluationAnswerDto {
-  EvaluationAnswerDto({required this.questionId, required this.optionId});
+  EvaluationAnswerDto({
+    required this.questionId,
+    required this.optionId,
+  });
 
   String questionId;
 
   String optionId;
 
   List<Object?> _toList() {
-    return <Object?>[questionId, optionId];
+    return <Object?>[
+      questionId,
+      optionId,
+    ];
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static EvaluationAnswerDto decode(Object result) {
     result as List<Object?>;
@@ -1390,8 +1347,7 @@ class EvaluationAnswerDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(questionId, other.questionId) &&
-        _deepEquals(optionId, other.optionId);
+    return _deepEquals(questionId, other.questionId) && _deepEquals(optionId, other.optionId);
   }
 
   @override
@@ -1405,19 +1361,24 @@ class EvaluationAnswerDto {
 }
 
 class EvaluationHiddenFieldDto {
-  EvaluationHiddenFieldDto({required this.name, required this.value});
+  EvaluationHiddenFieldDto({
+    required this.name,
+    required this.value,
+  });
 
   String name;
 
   String value;
 
   List<Object?> _toList() {
-    return <Object?>[name, value];
+    return <Object?>[
+      name,
+      value,
+    ];
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static EvaluationHiddenFieldDto decode(Object result) {
     result as List<Object?>;
@@ -1430,8 +1391,7 @@ class EvaluationHiddenFieldDto {
   @override
   // ignore: avoid_equals_and_hash_code_on_mutable_classes
   bool operator ==(Object other) {
-    if (other is! EvaluationHiddenFieldDto ||
-        other.runtimeType != runtimeType) {
+    if (other is! EvaluationHiddenFieldDto || other.runtimeType != runtimeType) {
       return false;
     }
     if (identical(this, other)) {
@@ -1492,8 +1452,7 @@ class EvaluationFormDto {
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static EvaluationFormDto decode(Object result) {
     result as List<Object?>;
@@ -1501,8 +1460,7 @@ class EvaluationFormDto {
       courseName: result[0]! as String,
       category: result[1]! as String,
       actionPath: result[2]! as String,
-      hiddenFields: (result[3]! as List<Object?>)
-          .cast<EvaluationHiddenFieldDto>(),
+      hiddenFields: (result[3]! as List<Object?>).cast<EvaluationHiddenFieldDto>(),
       questions: (result[4]! as List<Object?>).cast<EvaluationQuestionDto>(),
       suggestionField: result[5] as String?,
       suggestion: result[6]! as String,
@@ -1519,14 +1477,7 @@ class EvaluationFormDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(courseName, other.courseName) &&
-        _deepEquals(category, other.category) &&
-        _deepEquals(actionPath, other.actionPath) &&
-        _deepEquals(hiddenFields, other.hiddenFields) &&
-        _deepEquals(questions, other.questions) &&
-        _deepEquals(suggestionField, other.suggestionField) &&
-        _deepEquals(suggestion, other.suggestion) &&
-        _deepEquals(readOnly, other.readOnly);
+    return _deepEquals(courseName, other.courseName) && _deepEquals(category, other.category) && _deepEquals(actionPath, other.actionPath) && _deepEquals(hiddenFields, other.hiddenFields) && _deepEquals(questions, other.questions) && _deepEquals(suggestionField, other.suggestionField) && _deepEquals(suggestion, other.suggestion) && _deepEquals(readOnly, other.readOnly);
   }
 
   @override
@@ -1581,8 +1532,7 @@ class TiebaAccountDto {
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static TiebaAccountDto decode(Object result) {
     result as List<Object?>;
@@ -1607,14 +1557,7 @@ class TiebaAccountDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(uid, other.uid) &&
-        _deepEquals(username, other.username) &&
-        _deepEquals(nickname, other.nickname) &&
-        _deepEquals(avatarUrl, other.avatarUrl) &&
-        _deepEquals(intro, other.intro) &&
-        _deepEquals(fans, other.fans) &&
-        _deepEquals(posts, other.posts) &&
-        _deepEquals(concerned, other.concerned);
+    return _deepEquals(uid, other.uid) && _deepEquals(username, other.username) && _deepEquals(nickname, other.nickname) && _deepEquals(avatarUrl, other.avatarUrl) && _deepEquals(intro, other.intro) && _deepEquals(fans, other.fans) && _deepEquals(posts, other.posts) && _deepEquals(concerned, other.concerned);
   }
 
   @override
@@ -1673,8 +1616,7 @@ class ForumSummaryDto {
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static ForumSummaryDto decode(Object result) {
     result as List<Object?>;
@@ -1700,15 +1642,7 @@ class ForumSummaryDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(id, other.id) &&
-        _deepEquals(name, other.name) &&
-        _deepEquals(avatarUrl, other.avatarUrl) &&
-        _deepEquals(memberCount, other.memberCount) &&
-        _deepEquals(threadCount, other.threadCount) &&
-        _deepEquals(forumRuleTitle, other.forumRuleTitle) &&
-        _deepEquals(isFollowed, other.isFollowed) &&
-        _deepEquals(signed, other.signed) &&
-        _deepEquals(signedDays, other.signedDays);
+    return _deepEquals(id, other.id) && _deepEquals(name, other.name) && _deepEquals(avatarUrl, other.avatarUrl) && _deepEquals(memberCount, other.memberCount) && _deepEquals(threadCount, other.threadCount) && _deepEquals(forumRuleTitle, other.forumRuleTitle) && _deepEquals(isFollowed, other.isFollowed) && _deepEquals(signed, other.signed) && _deepEquals(signedDays, other.signedDays);
   }
 
   @override
@@ -1799,8 +1733,7 @@ class ForumThreadDto {
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static ForumThreadDto decode(Object result) {
     result as List<Object?>;
@@ -1834,23 +1767,7 @@ class ForumThreadDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(id, other.id) &&
-        _deepEquals(title, other.title) &&
-        _deepEquals(excerpt, other.excerpt) &&
-        _deepEquals(excerptContent, other.excerptContent) &&
-        _deepEquals(authorName, other.authorName) &&
-        _deepEquals(authorNickname, other.authorNickname) &&
-        _deepEquals(authorId, other.authorId) &&
-        _deepEquals(authorPortrait, other.authorPortrait) &&
-        _deepEquals(replyCount, other.replyCount) &&
-        _deepEquals(viewCount, other.viewCount) &&
-        _deepEquals(lastReplyTime, other.lastReplyTime) &&
-        _deepEquals(isTop, other.isTop) &&
-        _deepEquals(isGood, other.isGood) &&
-        _deepEquals(imageUrls, other.imageUrls) &&
-        _deepEquals(forumId, other.forumId) &&
-        _deepEquals(forumName, other.forumName) &&
-        _deepEquals(authorModeratorRole, other.authorModeratorRole);
+    return _deepEquals(id, other.id) && _deepEquals(title, other.title) && _deepEquals(excerpt, other.excerpt) && _deepEquals(excerptContent, other.excerptContent) && _deepEquals(authorName, other.authorName) && _deepEquals(authorNickname, other.authorNickname) && _deepEquals(authorId, other.authorId) && _deepEquals(authorPortrait, other.authorPortrait) && _deepEquals(replyCount, other.replyCount) && _deepEquals(viewCount, other.viewCount) && _deepEquals(lastReplyTime, other.lastReplyTime) && _deepEquals(isTop, other.isTop) && _deepEquals(isGood, other.isGood) && _deepEquals(imageUrls, other.imageUrls) && _deepEquals(forumId, other.forumId) && _deepEquals(forumName, other.forumName) && _deepEquals(authorModeratorRole, other.authorModeratorRole);
   }
 
   @override
@@ -1880,12 +1797,16 @@ class ForumPageDto {
   bool hasMore;
 
   List<Object?> _toList() {
-    return <Object?>[forum, threads, page, hasMore];
+    return <Object?>[
+      forum,
+      threads,
+      page,
+      hasMore,
+    ];
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static ForumPageDto decode(Object result) {
     result as List<Object?>;
@@ -1906,10 +1827,7 @@ class ForumPageDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(forum, other.forum) &&
-        _deepEquals(threads, other.threads) &&
-        _deepEquals(page, other.page) &&
-        _deepEquals(hasMore, other.hasMore);
+    return _deepEquals(forum, other.forum) && _deepEquals(threads, other.threads) && _deepEquals(page, other.page) && _deepEquals(hasMore, other.hasMore);
   }
 
   @override
@@ -1948,12 +1866,19 @@ class TiebaContentDto {
   int height;
 
   List<Object?> _toList() {
-    return <Object?>[kind, text, emoticonId, url, originalUrl, width, height];
+    return <Object?>[
+      kind,
+      text,
+      emoticonId,
+      url,
+      originalUrl,
+      width,
+      height,
+    ];
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static TiebaContentDto decode(Object result) {
     result as List<Object?>;
@@ -1977,13 +1902,7 @@ class TiebaContentDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(kind, other.kind) &&
-        _deepEquals(text, other.text) &&
-        _deepEquals(emoticonId, other.emoticonId) &&
-        _deepEquals(url, other.url) &&
-        _deepEquals(originalUrl, other.originalUrl) &&
-        _deepEquals(width, other.width) &&
-        _deepEquals(height, other.height);
+    return _deepEquals(kind, other.kind) && _deepEquals(text, other.text) && _deepEquals(emoticonId, other.emoticonId) && _deepEquals(url, other.url) && _deepEquals(originalUrl, other.originalUrl) && _deepEquals(width, other.width) && _deepEquals(height, other.height);
   }
 
   @override
@@ -2050,8 +1969,7 @@ class FloorReplyDto {
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static FloorReplyDto decode(Object result) {
     result as List<Object?>;
@@ -2079,17 +1997,7 @@ class FloorReplyDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(id, other.id) &&
-        _deepEquals(authorId, other.authorId) &&
-        _deepEquals(authorName, other.authorName) &&
-        _deepEquals(authorNickname, other.authorNickname) &&
-        _deepEquals(authorPortrait, other.authorPortrait) &&
-        _deepEquals(content, other.content) &&
-        _deepEquals(time, other.time) &&
-        _deepEquals(authorLevel, other.authorLevel) &&
-        _deepEquals(authorTitle, other.authorTitle) &&
-        _deepEquals(authorIp, other.authorIp) &&
-        _deepEquals(authorModeratorRole, other.authorModeratorRole);
+    return _deepEquals(id, other.id) && _deepEquals(authorId, other.authorId) && _deepEquals(authorName, other.authorName) && _deepEquals(authorNickname, other.authorNickname) && _deepEquals(authorPortrait, other.authorPortrait) && _deepEquals(content, other.content) && _deepEquals(time, other.time) && _deepEquals(authorLevel, other.authorLevel) && _deepEquals(authorTitle, other.authorTitle) && _deepEquals(authorIp, other.authorIp) && _deepEquals(authorModeratorRole, other.authorModeratorRole);
   }
 
   @override
@@ -2119,12 +2027,16 @@ class FloorReplyPageDto {
   int totalReplies;
 
   List<Object?> _toList() {
-    return <Object?>[replies, page, totalPages, totalReplies];
+    return <Object?>[
+      replies,
+      page,
+      totalPages,
+      totalReplies,
+    ];
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static FloorReplyPageDto decode(Object result) {
     result as List<Object?>;
@@ -2145,10 +2057,7 @@ class FloorReplyPageDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(replies, other.replies) &&
-        _deepEquals(page, other.page) &&
-        _deepEquals(totalPages, other.totalPages) &&
-        _deepEquals(totalReplies, other.totalReplies);
+    return _deepEquals(replies, other.replies) && _deepEquals(page, other.page) && _deepEquals(totalPages, other.totalPages) && _deepEquals(totalReplies, other.totalReplies);
   }
 
   @override
@@ -2231,8 +2140,7 @@ class ThreadFloorDto {
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static ThreadFloorDto decode(Object result) {
     result as List<Object?>;
@@ -2264,21 +2172,7 @@ class ThreadFloorDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(postId, other.postId) &&
-        _deepEquals(floor, other.floor) &&
-        _deepEquals(authorId, other.authorId) &&
-        _deepEquals(authorName, other.authorName) &&
-        _deepEquals(authorNickname, other.authorNickname) &&
-        _deepEquals(authorPortrait, other.authorPortrait) &&
-        _deepEquals(authorLevel, other.authorLevel) &&
-        _deepEquals(authorTitle, other.authorTitle) &&
-        _deepEquals(authorIp, other.authorIp) &&
-        _deepEquals(authorModeratorRole, other.authorModeratorRole) &&
-        _deepEquals(time, other.time) &&
-        _deepEquals(content, other.content) &&
-        _deepEquals(replies, other.replies) &&
-        _deepEquals(replyCount, other.replyCount) &&
-        _deepEquals(isOriginalPoster, other.isOriginalPoster);
+    return _deepEquals(postId, other.postId) && _deepEquals(floor, other.floor) && _deepEquals(authorId, other.authorId) && _deepEquals(authorName, other.authorName) && _deepEquals(authorNickname, other.authorNickname) && _deepEquals(authorPortrait, other.authorPortrait) && _deepEquals(authorLevel, other.authorLevel) && _deepEquals(authorTitle, other.authorTitle) && _deepEquals(authorIp, other.authorIp) && _deepEquals(authorModeratorRole, other.authorModeratorRole) && _deepEquals(time, other.time) && _deepEquals(content, other.content) && _deepEquals(replies, other.replies) && _deepEquals(replyCount, other.replyCount) && _deepEquals(isOriginalPoster, other.isOriginalPoster);
   }
 
   @override
@@ -2314,12 +2208,18 @@ class ThreadPageDto {
   int replyCount;
 
   List<Object?> _toList() {
-    return <Object?>[title, body, floors, page, totalPages, replyCount];
+    return <Object?>[
+      title,
+      body,
+      floors,
+      page,
+      totalPages,
+      replyCount,
+    ];
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static ThreadPageDto decode(Object result) {
     result as List<Object?>;
@@ -2342,12 +2242,7 @@ class ThreadPageDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(title, other.title) &&
-        _deepEquals(body, other.body) &&
-        _deepEquals(floors, other.floors) &&
-        _deepEquals(page, other.page) &&
-        _deepEquals(totalPages, other.totalPages) &&
-        _deepEquals(replyCount, other.replyCount);
+    return _deepEquals(title, other.title) && _deepEquals(body, other.body) && _deepEquals(floors, other.floors) && _deepEquals(page, other.page) && _deepEquals(totalPages, other.totalPages) && _deepEquals(replyCount, other.replyCount);
   }
 
   @override
@@ -2410,8 +2305,7 @@ class TiebaUserPostDto {
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static TiebaUserPostDto decode(Object result) {
     result as List<Object?>;
@@ -2438,16 +2332,7 @@ class TiebaUserPostDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(threadId, other.threadId) &&
-        _deepEquals(postId, other.postId) &&
-        _deepEquals(title, other.title) &&
-        _deepEquals(excerpt, other.excerpt) &&
-        _deepEquals(time, other.time) &&
-        _deepEquals(forumId, other.forumId) &&
-        _deepEquals(forumName, other.forumName) &&
-        _deepEquals(replyCount, other.replyCount) &&
-        _deepEquals(isReply, other.isReply) &&
-        _deepEquals(imageUrls, other.imageUrls);
+    return _deepEquals(threadId, other.threadId) && _deepEquals(postId, other.postId) && _deepEquals(title, other.title) && _deepEquals(excerpt, other.excerpt) && _deepEquals(time, other.time) && _deepEquals(forumId, other.forumId) && _deepEquals(forumName, other.forumName) && _deepEquals(replyCount, other.replyCount) && _deepEquals(isReply, other.isReply) && _deepEquals(imageUrls, other.imageUrls);
   }
 
   @override
@@ -2510,8 +2395,7 @@ class TiebaUserProfileDto {
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static TiebaUserProfileDto decode(Object result) {
     result as List<Object?>;
@@ -2538,16 +2422,7 @@ class TiebaUserProfileDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(uid, other.uid) &&
-        _deepEquals(username, other.username) &&
-        _deepEquals(nickname, other.nickname) &&
-        _deepEquals(avatarUrl, other.avatarUrl) &&
-        _deepEquals(intro, other.intro) &&
-        _deepEquals(fans, other.fans) &&
-        _deepEquals(concerned, other.concerned) &&
-        _deepEquals(posts, other.posts) &&
-        _deepEquals(threads, other.threads) &&
-        _deepEquals(replies, other.replies);
+    return _deepEquals(uid, other.uid) && _deepEquals(username, other.username) && _deepEquals(nickname, other.nickname) && _deepEquals(avatarUrl, other.avatarUrl) && _deepEquals(intro, other.intro) && _deepEquals(fans, other.fans) && _deepEquals(concerned, other.concerned) && _deepEquals(posts, other.posts) && _deepEquals(threads, other.threads) && _deepEquals(replies, other.replies);
   }
 
   @override
@@ -2598,8 +2473,7 @@ class TiebaImageRequestDto {
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static TiebaImageRequestDto decode(Object result) {
     result as List<Object?>;
@@ -2623,13 +2497,7 @@ class TiebaImageRequestDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(url, other.url) &&
-        _deepEquals(threadId, other.threadId) &&
-        _deepEquals(postId, other.postId) &&
-        _deepEquals(forumId, other.forumId) &&
-        _deepEquals(forumName, other.forumName) &&
-        _deepEquals(imageIndex, other.imageIndex) &&
-        _deepEquals(seeOriginalPosterOnly, other.seeOriginalPosterOnly);
+    return _deepEquals(url, other.url) && _deepEquals(threadId, other.threadId) && _deepEquals(postId, other.postId) && _deepEquals(forumId, other.forumId) && _deepEquals(forumName, other.forumName) && _deepEquals(imageIndex, other.imageIndex) && _deepEquals(seeOriginalPosterOnly, other.seeOriginalPosterOnly);
   }
 
   @override
@@ -2692,8 +2560,7 @@ class UpdateReleaseDto {
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static UpdateReleaseDto decode(Object result) {
     result as List<Object?>;
@@ -2720,16 +2587,7 @@ class UpdateReleaseDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(version, other.version) &&
-        _deepEquals(tagName, other.tagName) &&
-        _deepEquals(title, other.title) &&
-        _deepEquals(notes, other.notes) &&
-        _deepEquals(pageUrl, other.pageUrl) &&
-        _deepEquals(assetName, other.assetName) &&
-        _deepEquals(assetSize, other.assetSize) &&
-        _deepEquals(assetUrl, other.assetUrl) &&
-        _deepEquals(assetSha256, other.assetSha256) &&
-        _deepEquals(prerelease, other.prerelease);
+    return _deepEquals(version, other.version) && _deepEquals(tagName, other.tagName) && _deepEquals(title, other.title) && _deepEquals(notes, other.notes) && _deepEquals(pageUrl, other.pageUrl) && _deepEquals(assetName, other.assetName) && _deepEquals(assetSize, other.assetSize) && _deepEquals(assetUrl, other.assetUrl) && _deepEquals(assetSha256, other.assetSha256) && _deepEquals(prerelease, other.prerelease);
   }
 
   @override
@@ -2762,12 +2620,17 @@ class NativeEventDto {
   int timestampMillis;
 
   List<Object?> _toList() {
-    return <Object?>[source, stage, message, progress, timestampMillis];
+    return <Object?>[
+      source,
+      stage,
+      message,
+      progress,
+      timestampMillis,
+    ];
   }
 
   Object encode() {
-    return _toList();
-  }
+    return _toList();  }
 
   static NativeEventDto decode(Object result) {
     result as List<Object?>;
@@ -2789,11 +2652,7 @@ class NativeEventDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(source, other.source) &&
-        _deepEquals(stage, other.stage) &&
-        _deepEquals(message, other.message) &&
-        _deepEquals(progress, other.progress) &&
-        _deepEquals(timestampMillis, other.timestampMillis);
+    return _deepEquals(source, other.source) && _deepEquals(stage, other.stage) && _deepEquals(message, other.message) && _deepEquals(progress, other.progress) && _deepEquals(timestampMillis, other.timestampMillis);
   }
 
   @override
@@ -2806,6 +2665,7 @@ class NativeEventDto {
   }
 }
 
+
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
   @override
@@ -2813,121 +2673,121 @@ class _PigeonCodec extends StandardMessageCodec {
     if (value is int) {
       buffer.putUint8(4);
       buffer.putInt64(value);
-    } else if (value is CaptchaFlavor) {
+    }    else if (value is CaptchaFlavor) {
       buffer.putUint8(129);
       writeValue(buffer, value.index);
-    } else if (value is AuthStatus) {
+    }    else if (value is AuthStatus) {
       buffer.putUint8(130);
       writeValue(buffer, value.index);
-    } else if (value is RequiredAccountAction) {
+    }    else if (value is RequiredAccountAction) {
       buffer.putUint8(131);
       writeValue(buffer, value.index);
-    } else if (value is TiebaSignOutcome) {
+    }    else if (value is TiebaSignOutcome) {
       buffer.putUint8(132);
       writeValue(buffer, value.index);
-    } else if (value is TiebaModeratorRole) {
+    }    else if (value is TiebaModeratorRole) {
       buffer.putUint8(133);
       writeValue(buffer, value.index);
-    } else if (value is UpdateStage) {
+    }    else if (value is UpdateStage) {
       buffer.putUint8(134);
       writeValue(buffer, value.index);
-    } else if (value is NativeCapabilities) {
+    }    else if (value is NativeCapabilities) {
       buffer.putUint8(135);
       writeValue(buffer, value.encode());
-    } else if (value is SavedAccountDto) {
+    }    else if (value is SavedAccountDto) {
       buffer.putUint8(136);
       writeValue(buffer, value.encode());
-    } else if (value is CaptchaDto) {
+    }    else if (value is CaptchaDto) {
       buffer.putUint8(137);
       writeValue(buffer, value.encode());
-    } else if (value is LoginRequestDto) {
+    }    else if (value is LoginRequestDto) {
       buffer.putUint8(138);
       writeValue(buffer, value.encode());
-    } else if (value is UserInfoDto) {
+    }    else if (value is UserInfoDto) {
       buffer.putUint8(139);
       writeValue(buffer, value.encode());
-    } else if (value is WebVpnSessionDto) {
+    }    else if (value is WebVpnSessionDto) {
       buffer.putUint8(140);
       writeValue(buffer, value.encode());
-    } else if (value is AcademicTermDto) {
+    }    else if (value is AcademicTermDto) {
       buffer.putUint8(141);
       writeValue(buffer, value.encode());
-    } else if (value is CourseGradeDto) {
+    }    else if (value is CourseGradeDto) {
       buffer.putUint8(142);
       writeValue(buffer, value.encode());
-    } else if (value is TimetablePeriodDto) {
+    }    else if (value is TimetablePeriodDto) {
       buffer.putUint8(143);
       writeValue(buffer, value.encode());
-    } else if (value is TimetableCourseDto) {
+    }    else if (value is TimetableCourseDto) {
       buffer.putUint8(144);
       writeValue(buffer, value.encode());
-    } else if (value is TimetableDto) {
+    }    else if (value is TimetableDto) {
       buffer.putUint8(145);
       writeValue(buffer, value.encode());
-    } else if (value is SelectedCourseDto) {
+    }    else if (value is SelectedCourseDto) {
       buffer.putUint8(146);
       writeValue(buffer, value.encode());
-    } else if (value is EvaluationBatchDto) {
+    }    else if (value is EvaluationBatchDto) {
       buffer.putUint8(147);
       writeValue(buffer, value.encode());
-    } else if (value is EvaluationCourseDto) {
+    }    else if (value is EvaluationCourseDto) {
       buffer.putUint8(148);
       writeValue(buffer, value.encode());
-    } else if (value is EvaluationOptionDto) {
+    }    else if (value is EvaluationOptionDto) {
       buffer.putUint8(149);
       writeValue(buffer, value.encode());
-    } else if (value is EvaluationQuestionDto) {
+    }    else if (value is EvaluationQuestionDto) {
       buffer.putUint8(150);
       writeValue(buffer, value.encode());
-    } else if (value is EvaluationAnswerDto) {
+    }    else if (value is EvaluationAnswerDto) {
       buffer.putUint8(151);
       writeValue(buffer, value.encode());
-    } else if (value is EvaluationHiddenFieldDto) {
+    }    else if (value is EvaluationHiddenFieldDto) {
       buffer.putUint8(152);
       writeValue(buffer, value.encode());
-    } else if (value is EvaluationFormDto) {
+    }    else if (value is EvaluationFormDto) {
       buffer.putUint8(153);
       writeValue(buffer, value.encode());
-    } else if (value is TiebaAccountDto) {
+    }    else if (value is TiebaAccountDto) {
       buffer.putUint8(154);
       writeValue(buffer, value.encode());
-    } else if (value is ForumSummaryDto) {
+    }    else if (value is ForumSummaryDto) {
       buffer.putUint8(155);
       writeValue(buffer, value.encode());
-    } else if (value is ForumThreadDto) {
+    }    else if (value is ForumThreadDto) {
       buffer.putUint8(156);
       writeValue(buffer, value.encode());
-    } else if (value is ForumPageDto) {
+    }    else if (value is ForumPageDto) {
       buffer.putUint8(157);
       writeValue(buffer, value.encode());
-    } else if (value is TiebaContentDto) {
+    }    else if (value is TiebaContentDto) {
       buffer.putUint8(158);
       writeValue(buffer, value.encode());
-    } else if (value is FloorReplyDto) {
+    }    else if (value is FloorReplyDto) {
       buffer.putUint8(159);
       writeValue(buffer, value.encode());
-    } else if (value is FloorReplyPageDto) {
+    }    else if (value is FloorReplyPageDto) {
       buffer.putUint8(160);
       writeValue(buffer, value.encode());
-    } else if (value is ThreadFloorDto) {
+    }    else if (value is ThreadFloorDto) {
       buffer.putUint8(161);
       writeValue(buffer, value.encode());
-    } else if (value is ThreadPageDto) {
+    }    else if (value is ThreadPageDto) {
       buffer.putUint8(162);
       writeValue(buffer, value.encode());
-    } else if (value is TiebaUserPostDto) {
+    }    else if (value is TiebaUserPostDto) {
       buffer.putUint8(163);
       writeValue(buffer, value.encode());
-    } else if (value is TiebaUserProfileDto) {
+    }    else if (value is TiebaUserProfileDto) {
       buffer.putUint8(164);
       writeValue(buffer, value.encode());
-    } else if (value is TiebaImageRequestDto) {
+    }    else if (value is TiebaImageRequestDto) {
       buffer.putUint8(165);
       writeValue(buffer, value.encode());
-    } else if (value is UpdateReleaseDto) {
+    }    else if (value is UpdateReleaseDto) {
       buffer.putUint8(166);
       writeValue(buffer, value.encode());
-    } else if (value is NativeEventDto) {
+    }    else if (value is NativeEventDto) {
       buffer.putUint8(167);
       writeValue(buffer, value.encode());
     } else {
@@ -3028,21 +2888,15 @@ class _PigeonCodec extends StandardMessageCodec {
   }
 }
 
-const StandardMethodCodec pigeonMethodCodec = StandardMethodCodec(
-  _PigeonCodec(),
-);
+const StandardMethodCodec pigeonMethodCodec = StandardMethodCodec(_PigeonCodec());
 
 class WebVpnHostApi {
   /// Constructor for [WebVpnHostApi]. The [binaryMessenger] named argument is
   /// available for dependency injection. If it is left null, the default
   /// BinaryMessenger will be used which routes to the host platform.
-  WebVpnHostApi({
-    BinaryMessenger? binaryMessenger,
-    String messageChannelSuffix = '',
-  }) : pigeonVar_binaryMessenger = binaryMessenger,
-       pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty
-           ? '.$messageChannelSuffix'
-           : '';
+  WebVpnHostApi({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
+      : pigeonVar_binaryMessenger = binaryMessenger,
+        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
   final BinaryMessenger? pigeonVar_binaryMessenger;
 
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
@@ -3050,8 +2904,7 @@ class WebVpnHostApi {
   final String pigeonVar_messageChannelSuffix;
 
   Future<NativeCapabilities> getCapabilities() async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.WebVpnHostApi.getCapabilities$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.WebVpnHostApi.getCapabilities$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -3061,16 +2914,16 @@ class WebVpnHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as NativeCapabilities;
   }
 
   Future<WebVpnSessionDto> initialize() async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.WebVpnHostApi.initialize$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.WebVpnHostApi.initialize$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -3080,16 +2933,16 @@ class WebVpnHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as WebVpnSessionDto;
   }
 
   Future<WebVpnSessionDto> refreshCaptcha() async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.WebVpnHostApi.refreshCaptcha$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.WebVpnHostApi.refreshCaptcha$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -3099,79 +2952,73 @@ class WebVpnHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as WebVpnSessionDto;
   }
 
   Future<WebVpnSessionDto> login(LoginRequestDto request) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.WebVpnHostApi.login$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.WebVpnHostApi.login$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[request],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[request]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as WebVpnSessionDto;
   }
 
   Future<WebVpnSessionDto> selectSavedAccount(String username) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.WebVpnHostApi.selectSavedAccount$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.WebVpnHostApi.selectSavedAccount$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[username],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[username]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as WebVpnSessionDto;
   }
 
   Future<WebVpnSessionDto> forgetSavedAccount(String username) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.WebVpnHostApi.forgetSavedAccount$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.WebVpnHostApi.forgetSavedAccount$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[username],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[username]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as WebVpnSessionDto;
   }
 
   Future<WebVpnSessionDto> revalidate() async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.WebVpnHostApi.revalidate$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.WebVpnHostApi.revalidate$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -3181,16 +3028,16 @@ class WebVpnHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as WebVpnSessionDto;
   }
 
   Future<WebVpnSessionDto> logout() async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.WebVpnHostApi.logout$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.WebVpnHostApi.logout$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -3200,10 +3047,11 @@ class WebVpnHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as WebVpnSessionDto;
   }
 }
@@ -3212,13 +3060,9 @@ class AcademicHostApi {
   /// Constructor for [AcademicHostApi]. The [binaryMessenger] named argument is
   /// available for dependency injection. If it is left null, the default
   /// BinaryMessenger will be used which routes to the host platform.
-  AcademicHostApi({
-    BinaryMessenger? binaryMessenger,
-    String messageChannelSuffix = '',
-  }) : pigeonVar_binaryMessenger = binaryMessenger,
-       pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty
-           ? '.$messageChannelSuffix'
-           : '';
+  AcademicHostApi({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
+      : pigeonVar_binaryMessenger = binaryMessenger,
+        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
   final BinaryMessenger? pigeonVar_binaryMessenger;
 
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
@@ -3226,29 +3070,26 @@ class AcademicHostApi {
   final String pigeonVar_messageChannelSuffix;
 
   Future<WebVpnSessionDto> initialize(String webVpnUsername) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.initialize$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.initialize$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[webVpnUsername],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[webVpnUsername]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as WebVpnSessionDto;
   }
 
   Future<WebVpnSessionDto> refreshCaptcha() async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.refreshCaptcha$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.refreshCaptcha$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -3258,37 +3099,35 @@ class AcademicHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as WebVpnSessionDto;
   }
 
   Future<WebVpnSessionDto> login(LoginRequestDto request) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.login$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.login$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[request],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[request]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as WebVpnSessionDto;
   }
 
   Future<List<AcademicTermDto>> loadTerms() async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.loadTerms$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.loadTerms$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -3298,79 +3137,73 @@ class AcademicHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return (pigeonVar_replyValue! as List<Object?>).cast<AcademicTermDto>();
   }
 
   Future<List<CourseGradeDto>> loadGrades(String term, bool bestOnly) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.loadGrades$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.loadGrades$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[term, bestOnly],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[term, bestOnly]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return (pigeonVar_replyValue! as List<Object?>).cast<CourseGradeDto>();
   }
 
   Future<TimetableDto> loadTimetable(String? term) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.loadTimetable$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.loadTimetable$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[term],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[term]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as TimetableDto;
   }
 
   Future<List<SelectedCourseDto>> loadSelectionResults(String term) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.loadSelectionResults$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.loadSelectionResults$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[term],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[term]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return (pigeonVar_replyValue! as List<Object?>).cast<SelectedCourseDto>();
   }
 
   Future<List<EvaluationBatchDto>> loadEvaluationBatches() async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.loadEvaluationBatches$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.loadEvaluationBatches$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -3380,105 +3213,92 @@ class AcademicHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return (pigeonVar_replyValue! as List<Object?>).cast<EvaluationBatchDto>();
   }
 
   Future<List<EvaluationCourseDto>> loadEvaluationCourses(String path) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.loadEvaluationCourses$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.loadEvaluationCourses$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[path],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[path]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return (pigeonVar_replyValue! as List<Object?>).cast<EvaluationCourseDto>();
   }
 
   Future<EvaluationFormDto> loadEvaluationForm(String path) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.loadEvaluationForm$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.loadEvaluationForm$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[path],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[path]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as EvaluationFormDto;
   }
 
-  Future<bool> saveEvaluation(
-    EvaluationFormDto form,
-    List<EvaluationAnswerDto> answers,
-    String suggestion,
-    bool submit,
-  ) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.saveEvaluation$pigeonVar_messageChannelSuffix';
+  Future<bool> saveEvaluation(EvaluationFormDto form, List<EvaluationAnswerDto> answers, String suggestion, bool submit) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.saveEvaluation$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[form, answers, suggestion, submit],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[form, answers, suggestion, submit]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as bool;
   }
 
   Future<String> prepareWebPage(String path) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.prepareWebPage$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.prepareWebPage$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[path],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[path]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as String;
   }
 
   Future<bool> logout() async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.logout$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.logout$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -3488,10 +3308,11 @@ class AcademicHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as bool;
   }
 }
@@ -3500,13 +3321,9 @@ class TiebaHostApi {
   /// Constructor for [TiebaHostApi]. The [binaryMessenger] named argument is
   /// available for dependency injection. If it is left null, the default
   /// BinaryMessenger will be used which routes to the host platform.
-  TiebaHostApi({
-    BinaryMessenger? binaryMessenger,
-    String messageChannelSuffix = '',
-  }) : pigeonVar_binaryMessenger = binaryMessenger,
-       pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty
-           ? '.$messageChannelSuffix'
-           : '';
+  TiebaHostApi({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
+      : pigeonVar_binaryMessenger = binaryMessenger,
+        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
   final BinaryMessenger? pigeonVar_binaryMessenger;
 
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
@@ -3514,8 +3331,7 @@ class TiebaHostApi {
   final String pigeonVar_messageChannelSuffix;
 
   Future<TiebaAccountDto?> currentAccount() async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.currentAccount$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.currentAccount$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -3525,37 +3341,35 @@ class TiebaHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: true,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
     return pigeonVar_replyValue as TiebaAccountDto?;
   }
 
   Future<TiebaAccountDto> completeWebLogin(String cookieHeader) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.completeWebLogin$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.completeWebLogin$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[cookieHeader],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[cookieHeader]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as TiebaAccountDto;
   }
 
   Future<TiebaAccountDto> refreshAccount() async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.refreshAccount$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.refreshAccount$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -3565,16 +3379,16 @@ class TiebaHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as TiebaAccountDto;
   }
 
   Future<bool> logout() async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.logout$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.logout$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -3584,240 +3398,201 @@ class TiebaHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as bool;
   }
 
-  Future<ForumPageDto> loadForum(
-    String forumName,
-    int page,
-    String sort,
-    bool goodOnly,
-  ) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.loadForum$pigeonVar_messageChannelSuffix';
+  Future<ForumPageDto> loadForum(String forumName, int page, String sort, bool goodOnly) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.loadForum$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[forumName, page, sort, goodOnly],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[forumName, page, sort, goodOnly]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as ForumPageDto;
   }
 
-  Future<ForumPageDto> search(
-    String forumName,
-    String keyword,
-    int page,
-  ) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.search$pigeonVar_messageChannelSuffix';
+  Future<ForumPageDto> search(String forumName, String keyword, int page) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.search$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[forumName, keyword, page],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[forumName, keyword, page]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as ForumPageDto;
   }
 
-  Future<ThreadPageDto> loadThread(
-    String threadId,
-    int forumId,
-    String forumName,
-    int page,
-    String sort,
-    bool onlyOriginalPoster,
-  ) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.loadThread$pigeonVar_messageChannelSuffix';
+  Future<ThreadPageDto> loadThread(String threadId, int forumId, String forumName, int page, String sort, bool onlyOriginalPoster) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.loadThread$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[threadId, forumId, forumName, page, sort, onlyOriginalPoster],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[threadId, forumId, forumName, page, sort, onlyOriginalPoster]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as ThreadPageDto;
   }
 
-  Future<FloorReplyPageDto> loadFloorReplies(
-    String threadId,
-    String postId,
-    int page,
-  ) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.loadFloorReplies$pigeonVar_messageChannelSuffix';
+  Future<FloorReplyPageDto> loadFloorReplies(String threadId, String postId, int page) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.loadFloorReplies$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[threadId, postId, page],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[threadId, postId, page]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as FloorReplyPageDto;
   }
 
   Future<TiebaUserProfileDto> loadUserProfile(int uid) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.loadUserProfile$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.loadUserProfile$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[uid],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[uid]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as TiebaUserProfileDto;
   }
 
   Future<String> loadForumRule(int forumId) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.loadForumRule$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.loadForumRule$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[forumId],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[forumId]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as String;
   }
 
   Future<String> sign(String forumId, String forumName) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.sign$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.sign$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[forumId, forumName],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[forumId, forumName]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as String;
   }
 
   Future<String> followForum(String forumId, String forumName) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.followForum$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.followForum$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[forumId, forumName],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[forumId, forumName]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as String;
   }
 
   Future<String> resolveOriginalImage(TiebaImageRequestDto request) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.resolveOriginalImage$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.resolveOriginalImage$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[request],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[request]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as String;
   }
 
   Future<bool> launchOfficialReply(int threadId, int? postId) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.launchOfficialReply$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.TiebaHostApi.launchOfficialReply$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[threadId, postId],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[threadId, postId]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as bool;
   }
 }
@@ -3826,13 +3601,9 @@ class UpdateHostApi {
   /// Constructor for [UpdateHostApi]. The [binaryMessenger] named argument is
   /// available for dependency injection. If it is left null, the default
   /// BinaryMessenger will be used which routes to the host platform.
-  UpdateHostApi({
-    BinaryMessenger? binaryMessenger,
-    String messageChannelSuffix = '',
-  }) : pigeonVar_binaryMessenger = binaryMessenger,
-       pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty
-           ? '.$messageChannelSuffix'
-           : '';
+  UpdateHostApi({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
+      : pigeonVar_binaryMessenger = binaryMessenger,
+        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
   final BinaryMessenger? pigeonVar_binaryMessenger;
 
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
@@ -3840,50 +3611,45 @@ class UpdateHostApi {
   final String pigeonVar_messageChannelSuffix;
 
   Future<UpdateReleaseDto?> check(bool includePrereleases) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.UpdateHostApi.check$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.UpdateHostApi.check$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[includePrereleases],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[includePrereleases]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: true,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
     return pigeonVar_replyValue as UpdateReleaseDto?;
   }
 
   Future<bool> startDownload(UpdateReleaseDto release) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.UpdateHostApi.startDownload$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.UpdateHostApi.startDownload$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[release],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[release]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as bool;
   }
 
   Future<bool> cancelDownload() async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.UpdateHostApi.cancelDownload$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.UpdateHostApi.cancelDownload$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -3893,16 +3659,16 @@ class UpdateHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as bool;
   }
 
   Future<bool> installDownloaded() async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.UpdateHostApi.installDownloaded$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.UpdateHostApi.installDownloaded$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -3912,31 +3678,30 @@ class UpdateHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as bool;
   }
 
   Future<List<String>> checkAccelerators(List<String> urls) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.UpdateHostApi.checkAccelerators$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.UpdateHostApi.checkAccelerators$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[urls],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[urls]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return (pigeonVar_replyValue! as List<Object?>).cast<String>();
   }
 }
@@ -3945,13 +3710,9 @@ class SettingsHostApi {
   /// Constructor for [SettingsHostApi]. The [binaryMessenger] named argument is
   /// available for dependency injection. If it is left null, the default
   /// BinaryMessenger will be used which routes to the host platform.
-  SettingsHostApi({
-    BinaryMessenger? binaryMessenger,
-    String messageChannelSuffix = '',
-  }) : pigeonVar_binaryMessenger = binaryMessenger,
-       pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty
-           ? '.$messageChannelSuffix'
-           : '';
+  SettingsHostApi({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
+      : pigeonVar_binaryMessenger = binaryMessenger,
+        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
   final BinaryMessenger? pigeonVar_binaryMessenger;
 
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
@@ -3959,23 +3720,21 @@ class SettingsHostApi {
   final String pigeonVar_messageChannelSuffix;
 
   Future<bool> setThemedIcon(bool enabled) async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.SettingsHostApi.setThemedIcon$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.SettingsHostApi.setThemedIcon$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[enabled],
-    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[enabled]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as bool;
   }
 }
@@ -3984,13 +3743,9 @@ class RuntimeLogHostApi {
   /// Constructor for [RuntimeLogHostApi]. The [binaryMessenger] named argument is
   /// available for dependency injection. If it is left null, the default
   /// BinaryMessenger will be used which routes to the host platform.
-  RuntimeLogHostApi({
-    BinaryMessenger? binaryMessenger,
-    String messageChannelSuffix = '',
-  }) : pigeonVar_binaryMessenger = binaryMessenger,
-       pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty
-           ? '.$messageChannelSuffix'
-           : '';
+  RuntimeLogHostApi({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
+      : pigeonVar_binaryMessenger = binaryMessenger,
+        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
   final BinaryMessenger? pigeonVar_binaryMessenger;
 
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
@@ -3998,8 +3753,7 @@ class RuntimeLogHostApi {
   final String pigeonVar_messageChannelSuffix;
 
   Future<String> exportLog() async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.RuntimeLogHostApi.exportLog$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.RuntimeLogHostApi.exportLog$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -4009,16 +3763,16 @@ class RuntimeLogHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as String;
   }
 
   Future<bool> clearLog() async {
-    final pigeonVar_channelName =
-        'dev.flutter.pigeon.cithub_flutter.RuntimeLogHostApi.clearLog$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.RuntimeLogHostApi.clearLog$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -4028,10 +3782,11 @@ class RuntimeLogHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-      pigeonVar_replyList,
-      pigeonVar_channelName,
-      isNullValid: false,
-    );
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
     return pigeonVar_replyValue! as bool;
   }
 }
@@ -4042,14 +3797,12 @@ class RuntimeLogHostApi {
 /// not be called multiple times for the same `instanceName`. To deliver
 /// events to multiple listeners, call this method once and listen to the
 /// returned broadcast stream multiple times instead.
-Stream<NativeEventDto> events({String instanceName = ''}) {
+Stream<NativeEventDto> events( {String instanceName = ''}) {
   if (instanceName.isNotEmpty) {
     instanceName = '.$instanceName';
   }
-  final EventChannel eventsChannel = EventChannel(
-    'dev.flutter.pigeon.cithub_flutter.NativeEventChannelApi.events$instanceName',
-    pigeonMethodCodec,
-  );
+  final EventChannel eventsChannel =
+      EventChannel('dev.flutter.pigeon.cithub_flutter.NativeEventChannelApi.events$instanceName', pigeonMethodCodec);
   return eventsChannel.receiveBroadcastStream().map((dynamic event) {
     return event as NativeEventDto;
   });

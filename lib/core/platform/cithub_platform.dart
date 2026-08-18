@@ -12,6 +12,7 @@ abstract interface class CithubPlatform {
   Future<WebVpnSessionDto> forgetSavedWebVpnAccount(String username);
   Future<WebVpnSessionDto> logoutWebVpn();
   Future<WebVpnSessionDto> initializeAcademic(String webVpnUsername);
+  Future<WebVpnSessionDto> refreshAcademicCaptcha();
   Future<WebVpnSessionDto> loginAcademic(LoginRequestDto request);
   Future<bool> logoutAcademic();
   Future<List<AcademicTermDto>> loadAcademicTerms();
@@ -96,6 +97,9 @@ class PigeonCithubPlatform implements CithubPlatform {
   @override
   Future<WebVpnSessionDto> initializeAcademic(String username) =>
       _academic.initialize(username);
+  @override
+  Future<WebVpnSessionDto> refreshAcademicCaptcha() =>
+      _academic.refreshCaptcha();
   @override
   Future<WebVpnSessionDto> loginAcademic(LoginRequestDto request) =>
       _academic.login(request);

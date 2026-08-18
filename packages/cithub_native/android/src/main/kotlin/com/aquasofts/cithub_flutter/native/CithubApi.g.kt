@@ -644,7 +644,7 @@ data class CourseGradeDto (
   val gradePoint: String,
   val generalElective: String,
   val originalScore: String,
-  val description: String,
+  val scoreDescription: String,
   val note: String,
   val retakeSemester: String,
   val assessmentMethod: String,
@@ -668,7 +668,7 @@ data class CourseGradeDto (
       val gradePoint = pigeonVar_list[9] as String
       val generalElective = pigeonVar_list[10] as String
       val originalScore = pigeonVar_list[11] as String
-      val description = pigeonVar_list[12] as String
+      val scoreDescription = pigeonVar_list[12] as String
       val note = pigeonVar_list[13] as String
       val retakeSemester = pigeonVar_list[14] as String
       val assessmentMethod = pigeonVar_list[15] as String
@@ -676,7 +676,7 @@ data class CourseGradeDto (
       val courseAttribute = pigeonVar_list[17] as String
       val courseNature = pigeonVar_list[18] as String
       val courseCategory = pigeonVar_list[19] as String
-      return CourseGradeDto(sequence, semester, courseCode, courseName, groupName, score, scoreMark, credit, totalHours, gradePoint, generalElective, originalScore, description, note, retakeSemester, assessmentMethod, examType, courseAttribute, courseNature, courseCategory)
+      return CourseGradeDto(sequence, semester, courseCode, courseName, groupName, score, scoreMark, credit, totalHours, gradePoint, generalElective, originalScore, scoreDescription, note, retakeSemester, assessmentMethod, examType, courseAttribute, courseNature, courseCategory)
     }
   }
   fun toList(): List<Any?> {
@@ -693,7 +693,7 @@ data class CourseGradeDto (
       gradePoint,
       generalElective,
       originalScore,
-      description,
+      scoreDescription,
       note,
       retakeSemester,
       assessmentMethod,
@@ -711,7 +711,7 @@ data class CourseGradeDto (
       return true
     }
     val other = other as CourseGradeDto
-    return CithubApiPigeonUtils.deepEquals(this.sequence, other.sequence) && CithubApiPigeonUtils.deepEquals(this.semester, other.semester) && CithubApiPigeonUtils.deepEquals(this.courseCode, other.courseCode) && CithubApiPigeonUtils.deepEquals(this.courseName, other.courseName) && CithubApiPigeonUtils.deepEquals(this.groupName, other.groupName) && CithubApiPigeonUtils.deepEquals(this.score, other.score) && CithubApiPigeonUtils.deepEquals(this.scoreMark, other.scoreMark) && CithubApiPigeonUtils.deepEquals(this.credit, other.credit) && CithubApiPigeonUtils.deepEquals(this.totalHours, other.totalHours) && CithubApiPigeonUtils.deepEquals(this.gradePoint, other.gradePoint) && CithubApiPigeonUtils.deepEquals(this.generalElective, other.generalElective) && CithubApiPigeonUtils.deepEquals(this.originalScore, other.originalScore) && CithubApiPigeonUtils.deepEquals(this.description, other.description) && CithubApiPigeonUtils.deepEquals(this.note, other.note) && CithubApiPigeonUtils.deepEquals(this.retakeSemester, other.retakeSemester) && CithubApiPigeonUtils.deepEquals(this.assessmentMethod, other.assessmentMethod) && CithubApiPigeonUtils.deepEquals(this.examType, other.examType) && CithubApiPigeonUtils.deepEquals(this.courseAttribute, other.courseAttribute) && CithubApiPigeonUtils.deepEquals(this.courseNature, other.courseNature) && CithubApiPigeonUtils.deepEquals(this.courseCategory, other.courseCategory)
+    return CithubApiPigeonUtils.deepEquals(this.sequence, other.sequence) && CithubApiPigeonUtils.deepEquals(this.semester, other.semester) && CithubApiPigeonUtils.deepEquals(this.courseCode, other.courseCode) && CithubApiPigeonUtils.deepEquals(this.courseName, other.courseName) && CithubApiPigeonUtils.deepEquals(this.groupName, other.groupName) && CithubApiPigeonUtils.deepEquals(this.score, other.score) && CithubApiPigeonUtils.deepEquals(this.scoreMark, other.scoreMark) && CithubApiPigeonUtils.deepEquals(this.credit, other.credit) && CithubApiPigeonUtils.deepEquals(this.totalHours, other.totalHours) && CithubApiPigeonUtils.deepEquals(this.gradePoint, other.gradePoint) && CithubApiPigeonUtils.deepEquals(this.generalElective, other.generalElective) && CithubApiPigeonUtils.deepEquals(this.originalScore, other.originalScore) && CithubApiPigeonUtils.deepEquals(this.scoreDescription, other.scoreDescription) && CithubApiPigeonUtils.deepEquals(this.note, other.note) && CithubApiPigeonUtils.deepEquals(this.retakeSemester, other.retakeSemester) && CithubApiPigeonUtils.deepEquals(this.assessmentMethod, other.assessmentMethod) && CithubApiPigeonUtils.deepEquals(this.examType, other.examType) && CithubApiPigeonUtils.deepEquals(this.courseAttribute, other.courseAttribute) && CithubApiPigeonUtils.deepEquals(this.courseNature, other.courseNature) && CithubApiPigeonUtils.deepEquals(this.courseCategory, other.courseCategory)
   }
 
   override fun hashCode(): Int {
@@ -728,7 +728,7 @@ data class CourseGradeDto (
     result = 31 * result + CithubApiPigeonUtils.deepHash(this.gradePoint)
     result = 31 * result + CithubApiPigeonUtils.deepHash(this.generalElective)
     result = 31 * result + CithubApiPigeonUtils.deepHash(this.originalScore)
-    result = 31 * result + CithubApiPigeonUtils.deepHash(this.description)
+    result = 31 * result + CithubApiPigeonUtils.deepHash(this.scoreDescription)
     result = 31 * result + CithubApiPigeonUtils.deepHash(this.note)
     result = 31 * result + CithubApiPigeonUtils.deepHash(this.retakeSemester)
     result = 31 * result + CithubApiPigeonUtils.deepHash(this.assessmentMethod)
@@ -739,7 +739,7 @@ data class CourseGradeDto (
     return result
   }
   override fun toString(): String {
-    return "CourseGradeDto(sequence=$sequence, semester=$semester, courseCode=$courseCode, courseName=$courseName, groupName=$groupName, score=$score, scoreMark=$scoreMark, credit=$credit, totalHours=$totalHours, gradePoint=$gradePoint, generalElective=$generalElective, originalScore=$originalScore, description=$description, note=$note, retakeSemester=$retakeSemester, assessmentMethod=$assessmentMethod, examType=$examType, courseAttribute=$courseAttribute, courseNature=$courseNature, courseCategory=$courseCategory)"
+    return "CourseGradeDto(sequence=$sequence, semester=$semester, courseCode=$courseCode, courseName=$courseName, groupName=$groupName, score=$score, scoreMark=$scoreMark, credit=$credit, totalHours=$totalHours, gradePoint=$gradePoint, generalElective=$generalElective, originalScore=$originalScore, scoreDescription=$scoreDescription, note=$note, retakeSemester=$retakeSemester, assessmentMethod=$assessmentMethod, examType=$examType, courseAttribute=$courseAttribute, courseNature=$courseNature, courseCategory=$courseCategory)"
   }
 }
 

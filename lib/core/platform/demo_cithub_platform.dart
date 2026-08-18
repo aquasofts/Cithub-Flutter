@@ -70,6 +70,8 @@ class DemoCithubPlatform implements CithubPlatform {
   Future<WebVpnSessionDto> initializeAcademic(String webVpnUsername) async =>
       _session();
   @override
+  Future<WebVpnSessionDto> refreshAcademicCaptcha() async => _session();
+  @override
   Future<WebVpnSessionDto> loginAcademic(LoginRequestDto request) async =>
       _session();
   @override
@@ -107,7 +109,7 @@ class DemoCithubPlatform implements CithubPlatform {
       gradePoint: '4.2',
       generalElective: '否',
       originalScore: '92',
-      description: '',
+      scoreDescription: '',
       note: '',
       retakeSemester: '',
       assessmentMethod: '考试',
@@ -129,7 +131,7 @@ class DemoCithubPlatform implements CithubPlatform {
       gradePoint: '3.6',
       generalElective: '否',
       originalScore: '86',
-      description: '',
+      scoreDescription: '',
       note: '',
       retakeSemester: '',
       assessmentMethod: '考试',

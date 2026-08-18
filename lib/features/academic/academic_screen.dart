@@ -105,8 +105,11 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen>
     setState(() => _features = ordered);
   }
 
-  void _setSession(Future<WebVpnSessionDto> value) =>
-      setState(() => _session = value);
+  void _setSession(Future<WebVpnSessionDto> value) {
+    setState(() {
+      _session = value;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -163,6 +166,8 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen>
                 sliver: SliverToBoxAdapter(
                   child: WebVpnLoginPanel(
                     session: session,
+                    loading:
+                        snapshot.connectionState == ConnectionState.waiting,
                     onLogin: (request) => _setSession(
                       ref.read(cithubPlatformProvider).loginWebVpn(request),
                     ),
@@ -224,7 +229,11 @@ class _AcademicSessionSliverState
         .initializeAcademic(widget.webVpnSession.user?.username ?? '');
   }
 
-  void _set(Future<WebVpnSessionDto> value) => setState(() => _session = value);
+  void _set(Future<WebVpnSessionDto> value) {
+    setState(() {
+      _session = value;
+    });
+  }
 
   @override
   Widget build(BuildContext context) => FutureBuilder<WebVpnSessionDto>(
@@ -256,6 +265,7 @@ class _AcademicSessionSliverState
           sliver: SliverToBoxAdapter(
             child: WebVpnLoginPanel(
               session: academic,
+              loading: snapshot.connectionState == ConnectionState.waiting,
               title: '登录教务系统',
               description: '教务账号独立登录，密码只在本机加密保存。',
               usernameLabel: '教务系统账号',
@@ -264,11 +274,7 @@ class _AcademicSessionSliverState
               onLogin: (request) =>
                   _set(ref.read(cithubPlatformProvider).loginAcademic(request)),
               onRefreshCaptcha: () => _set(
-                ref
-                    .read(cithubPlatformProvider)
-                    .initializeAcademic(
-                      widget.webVpnSession.user?.username ?? '',
-                    ),
+                ref.read(cithubPlatformProvider).refreshAcademicCaptcha(),
               ),
             ),
           ),
@@ -344,6 +350,7 @@ class WebVpnLoginPanel extends StatefulWidget {
     required this.session,
     required this.onLogin,
     required this.onRefreshCaptcha,
+    this.loading = false,
     this.title = '登录 WebVPN',
     this.description = '登录后可访问教务系统；新应用不会读取旧版账号。',
     this.usernameLabel = '统一身份认证账号',
@@ -353,6 +360,7 @@ class WebVpnLoginPanel extends StatefulWidget {
     this.onForgetSavedAccount,
   });
   final WebVpnSessionDto session;
+  final bool loading;
   final ValueChanged<LoginRequestDto> onLogin;
   final VoidCallback onRefreshCaptcha;
   final String title;
@@ -381,7 +389,10 @@ class _WebVpnLoginPanelState extends State<WebVpnLoginPanel> {
   void didUpdateWidget(covariant WebVpnLoginPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     final recognized = widget.session.captcha?.recognizedCode ?? '';
-    if (recognized.isNotEmpty && recognized != _captcha.text) {
+    final captchaChanged =
+        widget.session.captcha?.id != oldWidget.session.captcha?.id;
+    if (captchaChanged ||
+        (recognized.isNotEmpty && recognized != _captcha.text)) {
       _captcha.text = recognized;
     }
   }
@@ -551,9 +562,19 @@ class _WebVpnLoginPanelState extends State<WebVpnLoginPanel> {
                         decoration: InputDecoration(
                           labelText: '验证码',
                           suffixIcon: IconButton(
-                            onPressed: widget.onRefreshCaptcha,
+                            key: const Key('webvpn-captcha-refresh'),
+                            onPressed: widget.loading
+                                ? null
+                                : widget.onRefreshCaptcha,
                             tooltip: '刷新验证码',
-                            icon: const Icon(Icons.refresh),
+                            icon: widget.loading
+                                ? const SizedBox.square(
+                                    dimension: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.refresh),
                           ),
                         ),
                       );
@@ -589,17 +610,25 @@ class _WebVpnLoginPanelState extends State<WebVpnLoginPanel> {
                 ),
                 const SizedBox(height: 8),
                 FilledButton(
-                  onPressed: () => widget.onLogin(
-                    LoginRequestDto(
-                      username: _username.text.trim(),
-                      password: _password.text,
-                      captchaId: widget.session.captcha?.id ?? '',
-                      captchaCode: _captcha.text.trim(),
-                      rememberPassword: _remember,
-                      useSavedPassword: _useSavedPassword,
-                    ),
-                  ),
-                  child: const Text('登录'),
+                  key: const Key('webvpn-login'),
+                  onPressed: widget.loading
+                      ? null
+                      : () => widget.onLogin(
+                          LoginRequestDto(
+                            username: _username.text.trim(),
+                            password: _password.text,
+                            captchaId: widget.session.captcha?.id ?? '',
+                            captchaCode: _captcha.text.trim(),
+                            rememberPassword: _remember,
+                            useSavedPassword: _useSavedPassword,
+                          ),
+                        ),
+                  child: widget.loading
+                      ? const SizedBox.square(
+                          dimension: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('登录'),
                 ),
                 if (widget.session.message case final message?)
                   Padding(

@@ -9,6 +9,8 @@ import 'package:pigeon/pigeon.dart';
       package: 'com.aquasofts.cithub_flutter.native',
       includeErrorClass: true,
     ),
+    swiftOut: 'packages/cithub_native/ios/Classes/CithubApi.g.swift',
+    swiftOptions: SwiftOptions(includeErrorClass: true),
     dartPackageName: 'cithub_flutter',
   ),
 )
@@ -141,7 +143,7 @@ class CourseGradeDto {
     required this.gradePoint,
     required this.generalElective,
     required this.originalScore,
-    required this.description,
+    required this.scoreDescription,
     required this.note,
     required this.retakeSemester,
     required this.assessmentMethod,
@@ -162,7 +164,7 @@ class CourseGradeDto {
   String gradePoint;
   String generalElective;
   String originalScore;
-  String description;
+  String scoreDescription;
   String note;
   String retakeSemester;
   String assessmentMethod;

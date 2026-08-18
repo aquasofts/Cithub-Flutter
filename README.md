@@ -1,6 +1,6 @@
 # Cithub Flutter
 
-Cithub 的 Android-only Flutter 重构。Flutter 负责 Material 3 界面、导航和页面状态；WebVPN、教务、贴吧、系统更新、Keystore 与本机日志通过 Pigeon 强类型接口连接 Kotlin。
+Cithub 的 Android / iOS Flutter 重构。Flutter 负责 Material 3 界面、导航和页面状态；WebVPN、教务、贴吧、系统更新、安全存储与本机日志通过 Pigeon 强类型接口连接 Kotlin 或 Swift。
 
 所有原生协议实现、固定 PB schema、Helios 和 flavor 专用验证码实现都位于仓库内独立 Flutter 插件 [`packages/cithub_native`](packages/cithub_native)，应用模块只保留 Android 启动壳与品牌资源，不依赖旧仓库或子模块。
 
@@ -9,6 +9,7 @@ Cithub 的 Android-only Flutter 重构。Flutter 负责 Material 3 界面、导�
 ## 支持范围
 
 - Android 8.0+（API 26），包名 `com.aquasofts.cithub_flutter`
+- iOS 15.0+：WebVPN、教务和贴吧原生协议由 Swift 实现，凭据与 Cookie 使用 Keychain 保存
 - Flutter 3.47.0 / Dart 3.13.0，Android targetSdk 35
 - `autoCaptcha`：包含 ML Kit 中文文字识别并允许验证码自动续登
 - `manualCaptcha`：不包含 ML Kit，不执行验证码识别或自动续登
@@ -22,12 +23,18 @@ flutter pub get
 dart run pigeon --input pigeons/cithub_api.dart
 flutter analyze
 flutter test
+swift test
 flutter test integration_test
 flutter build apk --debug --flavor manualCaptcha --target-platform android-arm64
 flutter build apk --debug --flavor autoCaptcha --target-platform android-arm64
+./tools/flutter_ios.sh build ios --simulator --debug
+./tools/flutter_ios.sh test integration_test/ios_native_channel_test.dart -d <ios-simulator-id>
+./tools/flutter_ios.sh test integration_test/ios_native_live_smoke_test.dart --dart-define=CITHUB_LIVE_PROTOCOL_TESTS=true -d <ios-simulator-id>
+./tools/flutter_ios.sh test integration_test/app_test.dart -d <ios-simulator-id>
+./tools/flutter_ios.sh test integration_test/tieba_image_viewer_test.dart -d <ios-simulator-id>
 ```
 
-Android 构建需要 JDK 17、Android SDK 35 和接受过许可的 NDK。Pigeon 生成文件必须和 [pigeons/cithub_api.dart](pigeons/cithub_api.dart) 同时提交。
+Android 构建需要 JDK 17、Android SDK 35 和接受过许可的 NDK。iOS 构建需要 Xcode 16+ 和 CocoaPods；仓库位于 macOS FileProvider 管理目录时，必须通过 `tools/flutter_ios.sh` 将签名产物放到系统临时目录，避免 `PhaseScriptExecution` 因扩展属性失败；脚本使用隔离配置，不会修改全局 Flutter 设置。Pigeon 生成文件必须和 [pigeons/cithub_api.dart](pigeons/cithub_api.dart) 同时提交。
 
 ## 正式签名
 

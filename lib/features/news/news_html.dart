@@ -181,8 +181,9 @@ String buildSafeNewsHtml(
     h1, h2, h3, h4, h5, h6 { line-height: 1.35; }
     img, video, svg, canvas { display: block; width: auto !important; max-width: 100% !important; height: auto !important; margin: 14px auto; border-radius: 10px; }
     figure { max-width: 100%; margin: 16px 0; }
-    table { display: block; width: 100% !important; max-width: 100% !important; overflow-x: auto; border-collapse: collapse; }
-    th, td { padding: 6px 8px; border: 1px solid $secondaryTextColor; }
+    table { display: table; width: 100% !important; max-width: 100% !important; min-width: 0 !important; table-layout: fixed; border-collapse: collapse; }
+    th, td { width: auto !important; min-width: 0 !important; padding: 6px 8px; border: 1px solid $secondaryTextColor; white-space: normal !important; overflow-wrap: anywhere; word-break: break-word; }
+    th > *, td > * { max-width: 100% !important; min-width: 0 !important; }
     pre { max-width: 100%; overflow-x: auto; white-space: pre-wrap; }
     a { color: $linkColor; }
     blockquote { margin: 1em 0; padding-left: 14px; border-left: 3px solid $linkColor; color: $secondaryTextColor; }

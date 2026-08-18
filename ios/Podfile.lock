@@ -1,0 +1,22 @@
+PODS:
+  - cithub_native (1.0.0):
+    - Flutter
+  - Flutter (1.0.0)
+
+DEPENDENCIES:
+  - cithub_native (from `.symlinks/plugins/cithub_native/ios`)
+  - Flutter (from `Flutter`)
+
+EXTERNAL SOURCES:
+  cithub_native:
+    :path: ".symlinks/plugins/cithub_native/ios"
+  Flutter:
+    :path: Flutter
+
+SPEC CHECKSUMS:
+  cithub_native: 41811b4049d8333a87437eb6397ea119b7bf358e
+  Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
+
+PODFILE CHECKSUM: 3ba3a73b1b12adcf321a227a745625fe0888cc82
+
+COCOAPODS: 1.17.0

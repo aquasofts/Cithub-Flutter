@@ -95,6 +95,30 @@ class ProtocolMockServerTest {
         assertFalse(runCatching { client.webPageUrl("../admin") }.isSuccess)
     }
 
+    @Test
+    fun academicRoutesAccountsToTheServerSelectedByTheSchoolLoginPage() {
+        assertEquals(
+            "https://http-10-198-47-147-8080.webvpn.ccit.edu.cn/jsxsd/",
+            AcademicServerRouter.baseUrlFor("teacher"),
+        )
+        assertEquals(
+            "https://http-10-198-47-147-8080.webvpn.ccit.edu.cn/jsxsd/",
+            AcademicServerRouter.baseUrlFor("2505422544"),
+        )
+        assertEquals(
+            "https://http-10-198-47-147-8081.webvpn.ccit.edu.cn/jsxsd/",
+            AcademicServerRouter.baseUrlFor("2505422545"),
+        )
+        assertEquals(
+            "https://http-10-198-47-148-8080.webvpn.ccit.edu.cn/jsxsd/",
+            AcademicServerRouter.baseUrlFor("2505422546"),
+        )
+        assertEquals(
+            "https://http-10-198-47-148-8081.webvpn.ccit.edu.cn/jsxsd/",
+            AcademicServerRouter.baseUrlFor("2505422547"),
+        )
+    }
+
     private fun json(body: String) = MockResponse().setHeader("Content-Type", "application/json").setBody(body)
     private fun html(body: String) = MockResponse().setHeader("Content-Type", "text/html; charset=utf-8").setBody(body)
     private fun cells(values: List<String>): String = values.joinToString("") { "<td>$it</td>" }

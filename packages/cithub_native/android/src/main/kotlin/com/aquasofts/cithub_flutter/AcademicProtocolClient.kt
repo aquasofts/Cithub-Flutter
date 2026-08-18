@@ -24,13 +24,48 @@ import org.jsoup.nodes.Element
 
 internal class AcademicLoginRequired(message: String) : IllegalStateException(message)
 
+internal object AcademicServerRouter {
+    private val baseUrls = listOf(
+        "https://http-10-198-47-147-8080.webvpn.ccit.edu.cn/jsxsd/",
+        "https://http-10-198-47-147-8081.webvpn.ccit.edu.cn/jsxsd/",
+        "https://http-10-198-47-148-8080.webvpn.ccit.edu.cn/jsxsd/",
+        "https://http-10-198-47-148-8081.webvpn.ccit.edu.cn/jsxsd/",
+    )
+
+    fun baseUrlFor(username: String): String {
+        val normalized = username.trim()
+        val serverIndex = if (normalized.isNotEmpty() && normalized.all(Char::isDigit)) {
+            normalized.fold(0) { remainder, digit ->
+                (remainder * 10 + digit.digitToInt()) % baseUrls.size
+            }
+        } else {
+            0
+        }
+        return baseUrls[serverIndex]
+    }
+}
+
 internal class AcademicProtocolClient(
     private val store: SecretStore,
     private val logs: RuntimeLogStore,
-    baseUrl: String = BASE_URL,
+    baseUrl: String? = null,
 ) {
-    private val baseUrl = if (baseUrl.endsWith('/')) baseUrl else "$baseUrl/"
+    private val automaticServerRouting = baseUrl == null
+    @Volatile private var baseUrl = (baseUrl ?: AcademicServerRouter.baseUrlFor("")).let {
+        if (it.endsWith('/')) it else "$it/"
+    }
     @Volatile private var timetableSchemeId: String? = null
+
+    fun routeForUsername(username: String): Boolean {
+        if (!automaticServerRouting) return false
+        val next = AcademicServerRouter.baseUrlFor(username)
+        if (next == baseUrl) return false
+        baseUrl = next
+        timetableSchemeId = null
+        return true
+    }
+
+    fun webOrigin(): String = baseUrl.substringBefore("/jsxsd/") + "/"
 
     fun initialize(): List<AcademicTermDto>? {
         val html = get("kscj/cjcx_query", "连接教务系统失败")
@@ -68,7 +103,7 @@ internal class AcademicProtocolClient(
         if (!successful) {
             val document = Jsoup.parse(response.text)
             val alert = Regex("alert\\s*\\(\\s*['\"]([^'\"]+)['\"]").find(response.text)?.groupValues?.get(1)
-            throw AcademicLoginRequired(alert ?: document.selectFirst("[id^=error]")?.text()
+            throw AcademicLoginRequired(alert ?: document.selectFirst("#showMsg, [id^=error]")?.text()
             ?: "教务系统账号、密码或验证码错误")
         }
         return initialize() ?: throw AcademicLoginRequired("教务系统登录未建立")
@@ -372,7 +407,6 @@ internal class AcademicProtocolClient(
     private fun encode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())
 
     private companion object {
-        const val BASE_URL = "https://http-10-198-47-148-8080.webvpn.ccit.edu.cn/jsxsd/"
         const val COOKIE_KEY = "webvpn.session.cookies"
         const val BROWSER_USER_AGENT = "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36"
     }

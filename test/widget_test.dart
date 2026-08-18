@@ -147,13 +147,25 @@ void main() {
       };
       final title = find.descendant(
         of: find.byKey(scrollKey),
-        matching: find.text(tab == '教务' ? '教务系统' : tab),
+        matching: find.text(switch (tab) {
+          '教务' => '教务系统',
+          '我的' => '个人信息',
+          _ => tab,
+        }),
       );
       expect(title, findsOneWidget);
       expect(tester.getTopLeft(title).dy, lessThan(80));
     }
 
     expect(find.byTooltip('设置'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const PageStorageKey('mine-scroll')),
+        matching: find.text('我的'),
+      ),
+      findsNothing,
+    );
+    expect(find.text('个人信息'), findsOneWidget);
   });
 
   testWidgets('Mine shows account details before explicit logout actions', (
@@ -380,6 +392,115 @@ void main() {
     expect(find.text('登录 WebVPN'), findsOneWidget);
     expect(find.text('统一身份认证账号'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('academic login and captcha refresh expose pending interaction', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final platform = _PendingWebVpnPlatform();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [cithubPlatformProvider.overrideWithValue(platform)],
+        child: const CithubApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('教务').last);
+    await tester.pumpAndSettle();
+
+    final refresh = find.byKey(const Key('webvpn-captcha-refresh'));
+    expect(refresh, findsOneWidget);
+    await tester.tap(refresh);
+    await tester.pump();
+    expect(platform.webVpnCaptchaRefreshes, 1);
+    expect(tester.widget<IconButton>(refresh).onPressed, isNull);
+
+    platform.completeCaptchaRefresh();
+    await tester.pumpAndSettle();
+    final login = find.byKey(const Key('webvpn-login'));
+    await tester.ensureVisible(login);
+    await tester.tap(login);
+    await tester.pump();
+    expect(platform.webVpnLogins, 1);
+    expect(tester.widget<FilledButton>(login).onPressed, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('academic captcha refresh uses its dedicated native call', (
+    tester,
+  ) async {
+    final platform = _PendingAcademicCaptchaPlatform();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [cithubPlatformProvider.overrideWithValue(platform)],
+        child: const CithubApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('教务').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('登录教务系统'), findsOneWidget);
+    final refresh = find.byKey(const Key('webvpn-captcha-refresh'));
+    await tester.tap(refresh);
+    await tester.pump();
+
+    expect(platform.academicCaptchaRefreshes, 1);
+    expect(platform.academicInitializations, 1);
+    expect(tester.widget<IconButton>(refresh).onPressed, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('captcha refresh clears the code from the previous image', (
+    tester,
+  ) async {
+    WebVpnSessionDto session(String id, String recognizedCode) =>
+        WebVpnSessionDto(
+          status: AuthStatus.signedOut,
+          requiredAction: RequiredAccountAction.none,
+          user: null,
+          savedAccounts: const [],
+          captcha: CaptchaDto(
+            id: id,
+            base64Image: '',
+            recognizedCode: recognizedCode,
+          ),
+          requiresCaptcha: true,
+          message: null,
+        );
+
+    Widget panel(WebVpnSessionDto value) => MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: WebVpnLoginPanel(
+            key: const ValueKey('captcha-panel'),
+            session: value,
+            onLogin: (_) {},
+            onRefreshCaptcha: () {},
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(panel(session('captcha-1', '1234')));
+    await tester.pumpAndSettle();
+    TextField captchaField() => tester.widget<TextField>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && widget.decoration?.labelText == '验证码',
+      ),
+    );
+    expect(captchaField().controller!.text, '1234');
+
+    await tester.pumpWidget(panel(session('captcha-2', '')));
+    await tester.pumpAndSettle();
+    expect(captchaField().controller!.text, isEmpty);
   });
 
   testWidgets('signed-in academic UI uses compact rows and grade filtering', (
@@ -683,5 +804,95 @@ class _SignedInAcademicPlatform extends DemoCithubPlatform {
   }) {
     lastBestOnly = bestOnly;
     return super.loadGrades(term, bestOnly: bestOnly);
+  }
+}
+
+class _PendingWebVpnPlatform extends DemoCithubPlatform {
+  int webVpnCaptchaRefreshes = 0;
+  int webVpnLogins = 0;
+  Completer<WebVpnSessionDto>? _captchaRefresh;
+  final _login = Completer<WebVpnSessionDto>();
+
+  WebVpnSessionDto get _signedOutSession => WebVpnSessionDto(
+    status: AuthStatus.signedOut,
+    requiredAction: RequiredAccountAction.none,
+    user: null,
+    savedAccounts: const [],
+    captcha: CaptchaDto(
+      id: 'pending-captcha',
+      base64Image: '',
+      recognizedCode: '1234',
+    ),
+    requiresCaptcha: true,
+    message: null,
+  );
+
+  @override
+  Future<WebVpnSessionDto> initializeWebVpn() async => _signedOutSession;
+
+  @override
+  Future<WebVpnSessionDto> refreshWebVpnCaptcha() {
+    webVpnCaptchaRefreshes++;
+    _captchaRefresh = Completer<WebVpnSessionDto>();
+    return _captchaRefresh!.future;
+  }
+
+  void completeCaptchaRefresh() => _captchaRefresh!.complete(_signedOutSession);
+
+  @override
+  Future<WebVpnSessionDto> loginWebVpn(LoginRequestDto request) {
+    webVpnLogins++;
+    return _login.future;
+  }
+}
+
+class _PendingAcademicCaptchaPlatform extends DemoCithubPlatform {
+  int academicInitializations = 0;
+  int academicCaptchaRefreshes = 0;
+  final _refresh = Completer<WebVpnSessionDto>();
+
+  WebVpnSessionDto get _webVpnSession => WebVpnSessionDto(
+    status: AuthStatus.signedIn,
+    requiredAction: RequiredAccountAction.none,
+    user: UserInfoDto(
+      username: '20260001',
+      nickname: '测试同学',
+      fullName: '测试同学',
+      groups: const ['学生'],
+      authType: 1,
+      bindWechat: false,
+      bindOtp: false,
+    ),
+    savedAccounts: const [],
+    requiresCaptcha: false,
+  );
+
+  WebVpnSessionDto get _academicSession => WebVpnSessionDto(
+    status: AuthStatus.signedOut,
+    requiredAction: RequiredAccountAction.none,
+    user: null,
+    savedAccounts: const [],
+    captcha: CaptchaDto(
+      id: 'academic-captcha',
+      base64Image: '',
+      recognizedCode: '5678',
+    ),
+    requiresCaptcha: true,
+    message: null,
+  );
+
+  @override
+  Future<WebVpnSessionDto> initializeWebVpn() async => _webVpnSession;
+
+  @override
+  Future<WebVpnSessionDto> initializeAcademic(String webVpnUsername) async {
+    academicInitializations++;
+    return _academicSession;
+  }
+
+  @override
+  Future<WebVpnSessionDto> refreshAcademicCaptcha() {
+    academicCaptchaRefreshes++;
+    return _refresh.future;
   }
 }
