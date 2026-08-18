@@ -23,6 +23,61 @@ const _dangerousTags = {
 };
 
 const _globalAttributes = {'title', 'colspan', 'rowspan'};
+const _safeStyleProperties = {
+  'align-items',
+  'align-self',
+  'background-color',
+  'border',
+  'border-bottom',
+  'border-color',
+  'border-left',
+  'border-radius',
+  'border-right',
+  'border-style',
+  'border-top',
+  'border-width',
+  'color',
+  'display',
+  'flex',
+  'flex-basis',
+  'flex-direction',
+  'flex-grow',
+  'flex-shrink',
+  'flex-wrap',
+  'font-size',
+  'font-style',
+  'font-weight',
+  'gap',
+  'height',
+  'justify-content',
+  'letter-spacing',
+  'line-height',
+  'margin',
+  'margin-bottom',
+  'margin-left',
+  'margin-right',
+  'margin-top',
+  'max-height',
+  'max-width',
+  'min-height',
+  'min-width',
+  'opacity',
+  'overflow',
+  'overflow-wrap',
+  'padding',
+  'padding-bottom',
+  'padding-left',
+  'padding-right',
+  'padding-top',
+  'position',
+  'text-align',
+  'text-decoration',
+  'text-indent',
+  'vertical-align',
+  'white-space',
+  'width',
+  'word-break',
+};
 const _spacerBlockTags = {
   'article',
   'aside',
@@ -44,6 +99,10 @@ String buildSafeNewsHtml(
   final document = html_parser.parse('<body>${article.html}</body>');
   final fragment = document.body!;
   final base = Uri.tryParse(article.link);
+  for (final legacyImage in fragment.querySelectorAll('vsbimg').toList()) {
+    final image = Element.tag('img')..attributes.addAll(legacyImage.attributes);
+    legacyImage.replaceWith(image);
+  }
   final elements = fragment.querySelectorAll('*').toList(growable: false);
   for (final element in elements) {
     if (_dangerousTags.contains(element.localName)) {
@@ -52,20 +111,27 @@ String buildSafeNewsHtml(
     }
     _sanitizeAttributes(element, base);
     if (element.localName == 'img') {
-      final source = _resolveHttps(element.attributes['src'] ?? '', base);
-      if (source == null) {
+      final source = safeNewsUrl(
+        element.attributes['src'] ?? '',
+        baseUrl: base,
+      );
+      if (source.isEmpty) {
         element.remove();
       } else {
+        final style = element.attributes['style'];
+        final title = element.attributes['title'];
         element.attributes
           ..clear()
           ..['src'] = source
           ..['loading'] = 'lazy'
           ..['data-news-image'] = source;
+        if (style != null) element.attributes['style'] = style;
+        if (title != null) element.attributes['title'] = title;
       }
     }
     if (element.localName == 'a') {
-      final href = _resolveHttps(element.attributes['href'] ?? '', base);
-      if (href == null) {
+      final href = safeNewsUrl(element.attributes['href'] ?? '', baseUrl: base);
+      if (href.isEmpty) {
         element.attributes.remove('href');
       } else {
         element.attributes['href'] = href;
@@ -108,7 +174,8 @@ String buildSafeNewsHtml(
     h1.article-title { margin: 4px 0 8px; font-size: 28px; line-height: 1.3; }
     .article-meta { margin-bottom: 22px; color: $secondaryTextColor; font-size: 14px; }
     p { margin: 0 0 1em; }
-    article, section, div { max-width: 100%; }
+    article, section, div, figure, p { max-width: 100%; }
+    article { width: 100%; overflow: hidden; }
     article > :first-child { margin-top: 0 !important; }
     article > :last-child { margin-bottom: 0 !important; }
     h1, h2, h3, h4, h5, h6 { line-height: 1.35; }
@@ -144,10 +211,14 @@ void _sanitizeAttributes(Element element, Uri? base) {
   for (final entry in original.entries) {
     final name = entry.key.toLowerCase();
     if (name.startsWith('on') ||
-        name == 'style' ||
         name == 'srcset' ||
         name == 'action' ||
         name == 'formaction') {
+      continue;
+    }
+    if (name == 'style') {
+      final style = _sanitizeInlineStyle(entry.value);
+      if (style.isNotEmpty) element.attributes['style'] = style;
       continue;
     }
     if (_globalAttributes.contains(name)) {
@@ -155,20 +226,36 @@ void _sanitizeAttributes(Element element, Uri? base) {
     }
   }
   if (element.localName == 'img') {
-    final source = _resolveHttps(original['src'] ?? '', base);
-    if (source != null) element.attributes['src'] = source;
+    final raw =
+        original['src'] ?? original['data-src'] ?? original['orisrc'] ?? '';
+    final source = safeNewsUrl(raw, baseUrl: base);
+    if (source.isNotEmpty) element.attributes['src'] = source;
   } else if (element.localName == 'a') {
-    final href = _resolveHttps(original['href'] ?? '', base);
-    if (href != null) element.attributes['href'] = href;
+    final href = safeNewsUrl(original['href'] ?? '', baseUrl: base);
+    if (href.isNotEmpty) element.attributes['href'] = href;
   }
 }
 
-String? _resolveHttps(String raw, Uri? base) {
-  final parsed = Uri.tryParse(raw.trim());
-  if (parsed == null || raw.trim().isEmpty) return null;
-  final resolved = parsed.hasScheme ? parsed : base?.resolveUri(parsed);
-  if (resolved == null || resolved.scheme != 'https' || resolved.host.isEmpty) {
-    return null;
+String _sanitizeInlineStyle(String raw) {
+  final declarations = <String>[];
+  for (final declaration in raw.split(';')) {
+    final separator = declaration.indexOf(':');
+    if (separator <= 0) continue;
+    final property = declaration.substring(0, separator).trim().toLowerCase();
+    final value = declaration.substring(separator + 1).trim();
+    final lowerValue = value.toLowerCase();
+    if (!_safeStyleProperties.contains(property) ||
+        value.isEmpty ||
+        lowerValue.contains('url(') ||
+        lowerValue.contains('expression') ||
+        lowerValue.contains('javascript:') ||
+        lowerValue.contains('@import') ||
+        (property == 'position' &&
+            (lowerValue == 'fixed' || lowerValue == 'sticky'))) {
+      continue;
+    }
+    if (!RegExp(r'^[\w\s#(),.%+\-/:]+$').hasMatch(value)) continue;
+    declarations.add('$property: $value');
   }
-  return resolved.toString();
+  return declarations.join('; ');
 }

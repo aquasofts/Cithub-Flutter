@@ -235,7 +235,14 @@ List<NewsArticle> parseFeed(
   return entries.map((entry) {
     String field(List<String> names) {
       for (final name in names) {
-        final element = entry.findElements(name).firstOrNull;
+        final element = entry.children
+            .whereType<XmlElement>()
+            .where(
+              (candidate) =>
+                  candidate.name.qualified == name ||
+                  candidate.name.local == name.split(':').last,
+            )
+            .firstOrNull;
         if (element != null && element.innerText.trim().isNotEmpty) {
           return element.innerText.trim();
         }
@@ -250,7 +257,7 @@ List<NewsArticle> parseFeed(
         .firstOrNull
         ?.getAttribute('href');
     if (atomLink != null && atomLink.isNotEmpty) link = atomLink;
-    link = _safeHttpsUrl(link, baseUrl: sourceUri);
+    link = safeNewsUrl(link, baseUrl: sourceUri);
     final html = field(const [
       'content:encoded',
       'content',
@@ -258,12 +265,20 @@ List<NewsArticle> parseFeed(
       'summary',
     ]);
     final summary = html_parser.parseFragment(html).text?.trim() ?? '';
-    final title = field(const ['title']);
+    final rawTitle = field(const ['title']);
+    final source = field(const ['dc:creator']).isNotEmpty
+        ? field(const ['dc:creator'])
+        : field(const ['source']).isNotEmpty
+        ? field(const ['source'])
+        : _leadingTitleSource(rawTitle).isNotEmpty
+        ? _leadingTitleSource(rawTitle)
+        : channelTitle;
+    final title = _stripDuplicatedSource(rawTitle, source);
     final guid = field(const ['guid', 'id']);
     final date = field(const ['pubDate', 'published', 'updated', 'dc:date']);
     return NewsArticle(
       id: guid.isEmpty ? '$sourceUrl#$title' : guid,
-      source: channelTitle,
+      source: source,
       title: title.isEmpty ? '无标题' : title,
       link: link,
       summary: summary,
@@ -315,23 +330,58 @@ DateTime? _parseRfcDate(String value) {
 }
 
 String _firstImage(String markup, {required Object baseUrl}) {
-  final raw = html_parser
-      .parseFragment(markup)
-      .querySelector('img')
-      ?.attributes['src'];
-  return _safeHttpsUrl(raw ?? '', baseUrl: baseUrl);
+  final image = html_parser.parseFragment(markup).querySelector('img,vsbimg');
+  if (image == null) return '';
+  final raw =
+      image.attributes['src'] ??
+      image.attributes['data-src'] ??
+      image.attributes['orisrc'] ??
+      '';
+  return safeNewsUrl(raw, baseUrl: baseUrl);
 }
 
-String _safeHttpsUrl(String raw, {required Object baseUrl}) {
+String safeNewsUrl(String raw, {required Object? baseUrl}) {
   final value = raw.trim();
   if (value.isEmpty) return '';
-  final base = baseUrl is Uri ? baseUrl : Uri.tryParse(baseUrl.toString());
-  final parsed = Uri.tryParse(value);
-  if (base == null || parsed == null) return '';
-  final resolved = parsed.hasScheme ? parsed : base.resolveUri(parsed);
-  return resolved.scheme == 'https' && resolved.host.isNotEmpty
-      ? resolved.toString()
-      : '';
+  final base = baseUrl is Uri
+      ? baseUrl
+      : Uri.tryParse(baseUrl?.toString() ?? '');
+  final expanded = _expandVsbImagePath(value);
+  final parsed = Uri.tryParse(expanded);
+  if (parsed == null) return '';
+  final resolved = parsed.hasScheme ? parsed : base?.resolveUri(parsed);
+  if (resolved == null) return '';
+  if (resolved.host.isEmpty) return '';
+  if (resolved.scheme == 'https') return resolved.toString();
+  if (resolved.scheme == 'http' && _isTrustedCcitHost(resolved.host)) {
+    return resolved.replace(scheme: 'https').toString();
+  }
+  return '';
+}
+
+String _expandVsbImagePath(String value) {
+  final match = RegExp(r'^(/_vsl/)([0-9a-fA-F]{32})/([^/?#]+)/([^/?#]+)')
+      .firstMatch(value);
+  if (match == null) return value;
+  final hash = match.group(2)!;
+  return '/__local/${hash.substring(0, 1)}/${hash.substring(1, 3)}/'
+      '${hash.substring(3, 5)}/${hash.substring(5)}_${match.group(3)}_'
+      '${match.group(4)}.jpg';
+}
+
+bool _isTrustedCcitHost(String host) {
+  final normalized = host.toLowerCase();
+  return normalized == 'ccit.edu.cn' || normalized.endsWith('.ccit.edu.cn');
+}
+
+String _leadingTitleSource(String title) =>
+    RegExp(r'^[\[【]([^\]】]+)[\]】]\s*').firstMatch(title)?.group(1)?.trim() ??
+    '';
+
+String _stripDuplicatedSource(String title, String source) {
+  final match = RegExp(r'^[\[【]([^\]】]+)[\]】]\s*').firstMatch(title);
+  if (match == null || match.group(1)?.trim() != source.trim()) return title;
+  return title.substring(match.end).trim();
 }
 
 List<NewsArticle>? runCatchingArticles(String raw) {

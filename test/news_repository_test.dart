@@ -59,4 +59,49 @@ void main() {
     expect(articles.single.link, isEmpty);
     expect(articles.single.coverUrl, 'https://example.edu/images/cover.jpg');
   });
+
+  test(
+    'uses the RSS item publisher and removes its duplicated title prefix',
+    () {
+      final articles = parseFeed(
+        utf8.encode('''
+        <rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><channel>
+          <title>校园公众号合集</title>
+          <item><title>[学生工作处] 青春逐梦</title>
+            <dc:creator>学生工作处</dc:creator>
+            <source>长春工程学院</source>
+            <link>https://example.edu/post/1</link>
+            <description><![CDATA[<p>正文</p>]]></description>
+          </item>
+        </channel></rss>
+      '''),
+        section: NewsSection.wechat,
+        sourceUrl: 'https://example.edu/rss.xml',
+      );
+
+      expect(articles.single.source, '学生工作处');
+      expect(articles.single.title, '青春逐梦');
+    },
+  );
+
+  test('upgrades trusted CCIT and expands VSB image URLs', () {
+    final articles = parseFeed(
+      utf8.encode('''
+        <rss version="2.0"><channel><title>学校新闻</title>
+          <item><title>图片测试</title><link>https://www.ccit.edu.cn/info/1.htm</link>
+            <description><![CDATA[
+              <vsbimg src="/_vsl/0123456789ABCDEF0123456789ABCDEF/1234/5678"></vsbimg>
+            ]]></description>
+          </item>
+        </channel></rss>
+      '''),
+      section: NewsSection.official,
+      sourceUrl: 'https://www.ccit.edu.cn/rss.xml',
+    );
+
+    expect(
+      articles.single.coverUrl,
+      'https://www.ccit.edu.cn/__local/0/12/34/56789ABCDEF0123456789ABCDEF_1234_5678.jpg',
+    );
+  });
 }

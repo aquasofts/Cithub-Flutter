@@ -64,6 +64,10 @@ class TiebaProtoClientTest {
                         authorId = 7,
                         forumId = 64554,
                         forumName = "长春工程学院",
+                        richAbstract = listOf(
+                            PbContent(type = 0, text = "正文"),
+                            PbContent(type = 2, text = "image_emoticon89", c = "笑尿"),
+                        ),
                     ),
                 ),
                 user_list = listOf(User(id = 7, name = "author", nameShow = "作者")),
@@ -85,6 +89,9 @@ class TiebaProtoClientTest {
 
         assertEquals("64554", page.forum.id)
         assertEquals("协议回归帖子", page.threads.single().title)
+        assertEquals(2, page.threads.single().excerptContent.size)
+        assertEquals("笑尿", page.threads.single().excerptContent[1].text)
+        assertEquals("image_emoticon89", page.threads.single().excerptContent[1].emoticonId)
         assertEquals("3", page.threads.single().replyCount)
         assertTrue(page.hasMore)
         val request = server.takeRequest()

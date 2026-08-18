@@ -402,6 +402,7 @@ class ForumThreadDto {
     required this.id,
     required this.title,
     required this.excerpt,
+    required this.excerptContent,
     required this.authorName,
     required this.authorNickname,
     required this.authorId,
@@ -419,6 +420,7 @@ class ForumThreadDto {
   String id;
   String title;
   String excerpt;
+  List<TiebaContentDto> excerptContent;
   String authorName;
   String authorNickname;
   int authorId;
@@ -451,6 +453,7 @@ class TiebaContentDto {
   TiebaContentDto({
     required this.kind,
     required this.text,
+    required this.emoticonId,
     required this.url,
     required this.originalUrl,
     required this.width,
@@ -458,6 +461,7 @@ class TiebaContentDto {
   });
   String kind;
   String text;
+  String emoticonId;
   String url;
   String originalUrl;
   int width;

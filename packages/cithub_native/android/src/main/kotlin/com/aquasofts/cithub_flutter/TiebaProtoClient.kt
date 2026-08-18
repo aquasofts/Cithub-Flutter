@@ -462,6 +462,7 @@ internal class TiebaProtoClient(
             id.toString(),
             source.title.ifBlank { "无标题" },
             content.plainText().ifBlank { source._abstract.joinToString("") { it.text }.plainText() },
+            content,
             author?.name.orEmpty(),
             author?.nameShow.orEmpty().ifBlank { author?.name.orEmpty() },
             author?.id ?: source.authorId,
@@ -1017,10 +1018,18 @@ private fun List<PbContent>.toContentDtos(): List<TiebaContentDto> = mapNotNull 
     val dimensions = item.dimensions()
     when (item.type) {
         0, 4, 9, 27, 35, 40 -> item.text.takeIf(String::isNotEmpty)?.let {
-            TiebaContentDto("text", it, "", "", 0, 0)
+            TiebaContentDto("text", it, "", "", "", 0, 0)
         }
-        1 -> TiebaContentDto("link", item.text.ifBlank { item.link }, normalizeUrl(item.link), "", 0, 0)
-        2 -> TiebaContentDto("emoticon", item.c.ifBlank { item.text.ifBlank { "表情" } }, "", "", 0, 0)
+        1 -> TiebaContentDto("link", item.text.ifBlank { item.link }, "", normalizeUrl(item.link), "", 0, 0)
+        2 -> TiebaContentDto(
+            "emoticon",
+            item.c.ifBlank { item.text.ifBlank { "表情" } },
+            item.text,
+            "",
+            "",
+            0,
+            0,
+        )
         3, 20 -> {
             val preview = sequenceOf(item.bigCdnSrc, item.cdnSrcActive, item.cdnSrc, item.bigSrc, item.src, item.originSrc)
                 .firstOrNull(String::isNotBlank).orEmpty()
@@ -1028,7 +1037,7 @@ private fun List<PbContent>.toContentDtos(): List<TiebaContentDto> = mapNotNull 
                 .firstOrNull(String::isNotBlank).orEmpty()
             preview.takeIf(String::isNotBlank)?.let {
                 TiebaContentDto(
-                    "image", "", normalizeUrl(preview), normalizeUrl(original.ifBlank { preview }),
+                    "image", "", "", normalizeUrl(preview), normalizeUrl(original.ifBlank { preview }),
                     dimensions.first.toLong(), dimensions.second.toLong(),
                 )
             }
@@ -1038,16 +1047,16 @@ private fun List<PbContent>.toContentDtos(): List<TiebaContentDto> = mapNotNull 
                 value.startsWith("http") && (value.contains(".mp4") || value.contains(".m3u8"))
             }
             if (video == null) {
-                TiebaContentDto("text", "[视频]${item.text}", "", "", 0, 0)
+                TiebaContentDto("text", "[视频]${item.text}", "", "", "", 0, 0)
             } else {
                 TiebaContentDto(
-                    "video", "", normalizeUrl(video), normalizeUrl(item.src),
+                    "video", "", "", normalizeUrl(video), normalizeUrl(item.src),
                     dimensions.first.toLong(), dimensions.second.toLong(),
                 )
             }
         }
-        10 -> TiebaContentDto("text", "[语音]", "", "", 0, 0)
-        else -> item.text.takeIf(String::isNotEmpty)?.let { TiebaContentDto("text", it, "", "", 0, 0) }
+        10 -> TiebaContentDto("text", "[语音]", "", "", "", 0, 0)
+        else -> item.text.takeIf(String::isNotEmpty)?.let { TiebaContentDto("text", it, "", "", "", 0, 0) }
     }
 }
 

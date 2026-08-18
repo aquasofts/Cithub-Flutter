@@ -1509,6 +1509,7 @@ data class ForumThreadDto (
   val id: String,
   val title: String,
   val excerpt: String,
+  val excerptContent: List<TiebaContentDto>,
   val authorName: String,
   val authorNickname: String,
   val authorId: Long,
@@ -1529,20 +1530,21 @@ data class ForumThreadDto (
       val id = pigeonVar_list[0] as String
       val title = pigeonVar_list[1] as String
       val excerpt = pigeonVar_list[2] as String
-      val authorName = pigeonVar_list[3] as String
-      val authorNickname = pigeonVar_list[4] as String
-      val authorId = pigeonVar_list[5] as Long
-      val authorPortrait = pigeonVar_list[6] as String
-      val replyCount = pigeonVar_list[7] as String
-      val viewCount = pigeonVar_list[8] as String
-      val lastReplyTime = pigeonVar_list[9] as String
-      val isTop = pigeonVar_list[10] as Boolean
-      val isGood = pigeonVar_list[11] as Boolean
-      val imageUrls = pigeonVar_list[12] as List<String>
-      val forumId = pigeonVar_list[13] as Long
-      val forumName = pigeonVar_list[14] as String
-      val authorModeratorRole = pigeonVar_list[15] as TiebaModeratorRole
-      return ForumThreadDto(id, title, excerpt, authorName, authorNickname, authorId, authorPortrait, replyCount, viewCount, lastReplyTime, isTop, isGood, imageUrls, forumId, forumName, authorModeratorRole)
+      val excerptContent = pigeonVar_list[3] as List<TiebaContentDto>
+      val authorName = pigeonVar_list[4] as String
+      val authorNickname = pigeonVar_list[5] as String
+      val authorId = pigeonVar_list[6] as Long
+      val authorPortrait = pigeonVar_list[7] as String
+      val replyCount = pigeonVar_list[8] as String
+      val viewCount = pigeonVar_list[9] as String
+      val lastReplyTime = pigeonVar_list[10] as String
+      val isTop = pigeonVar_list[11] as Boolean
+      val isGood = pigeonVar_list[12] as Boolean
+      val imageUrls = pigeonVar_list[13] as List<String>
+      val forumId = pigeonVar_list[14] as Long
+      val forumName = pigeonVar_list[15] as String
+      val authorModeratorRole = pigeonVar_list[16] as TiebaModeratorRole
+      return ForumThreadDto(id, title, excerpt, excerptContent, authorName, authorNickname, authorId, authorPortrait, replyCount, viewCount, lastReplyTime, isTop, isGood, imageUrls, forumId, forumName, authorModeratorRole)
     }
   }
   fun toList(): List<Any?> {
@@ -1550,6 +1552,7 @@ data class ForumThreadDto (
       id,
       title,
       excerpt,
+      excerptContent,
       authorName,
       authorNickname,
       authorId,
@@ -1573,7 +1576,7 @@ data class ForumThreadDto (
       return true
     }
     val other = other as ForumThreadDto
-    return CithubApiPigeonUtils.deepEquals(this.id, other.id) && CithubApiPigeonUtils.deepEquals(this.title, other.title) && CithubApiPigeonUtils.deepEquals(this.excerpt, other.excerpt) && CithubApiPigeonUtils.deepEquals(this.authorName, other.authorName) && CithubApiPigeonUtils.deepEquals(this.authorNickname, other.authorNickname) && CithubApiPigeonUtils.deepEquals(this.authorId, other.authorId) && CithubApiPigeonUtils.deepEquals(this.authorPortrait, other.authorPortrait) && CithubApiPigeonUtils.deepEquals(this.replyCount, other.replyCount) && CithubApiPigeonUtils.deepEquals(this.viewCount, other.viewCount) && CithubApiPigeonUtils.deepEquals(this.lastReplyTime, other.lastReplyTime) && CithubApiPigeonUtils.deepEquals(this.isTop, other.isTop) && CithubApiPigeonUtils.deepEquals(this.isGood, other.isGood) && CithubApiPigeonUtils.deepEquals(this.imageUrls, other.imageUrls) && CithubApiPigeonUtils.deepEquals(this.forumId, other.forumId) && CithubApiPigeonUtils.deepEquals(this.forumName, other.forumName) && CithubApiPigeonUtils.deepEquals(this.authorModeratorRole, other.authorModeratorRole)
+    return CithubApiPigeonUtils.deepEquals(this.id, other.id) && CithubApiPigeonUtils.deepEquals(this.title, other.title) && CithubApiPigeonUtils.deepEquals(this.excerpt, other.excerpt) && CithubApiPigeonUtils.deepEquals(this.excerptContent, other.excerptContent) && CithubApiPigeonUtils.deepEquals(this.authorName, other.authorName) && CithubApiPigeonUtils.deepEquals(this.authorNickname, other.authorNickname) && CithubApiPigeonUtils.deepEquals(this.authorId, other.authorId) && CithubApiPigeonUtils.deepEquals(this.authorPortrait, other.authorPortrait) && CithubApiPigeonUtils.deepEquals(this.replyCount, other.replyCount) && CithubApiPigeonUtils.deepEquals(this.viewCount, other.viewCount) && CithubApiPigeonUtils.deepEquals(this.lastReplyTime, other.lastReplyTime) && CithubApiPigeonUtils.deepEquals(this.isTop, other.isTop) && CithubApiPigeonUtils.deepEquals(this.isGood, other.isGood) && CithubApiPigeonUtils.deepEquals(this.imageUrls, other.imageUrls) && CithubApiPigeonUtils.deepEquals(this.forumId, other.forumId) && CithubApiPigeonUtils.deepEquals(this.forumName, other.forumName) && CithubApiPigeonUtils.deepEquals(this.authorModeratorRole, other.authorModeratorRole)
   }
 
   override fun hashCode(): Int {
@@ -1581,6 +1584,7 @@ data class ForumThreadDto (
     result = 31 * result + CithubApiPigeonUtils.deepHash(this.id)
     result = 31 * result + CithubApiPigeonUtils.deepHash(this.title)
     result = 31 * result + CithubApiPigeonUtils.deepHash(this.excerpt)
+    result = 31 * result + CithubApiPigeonUtils.deepHash(this.excerptContent)
     result = 31 * result + CithubApiPigeonUtils.deepHash(this.authorName)
     result = 31 * result + CithubApiPigeonUtils.deepHash(this.authorNickname)
     result = 31 * result + CithubApiPigeonUtils.deepHash(this.authorId)
@@ -1597,7 +1601,7 @@ data class ForumThreadDto (
     return result
   }
   override fun toString(): String {
-    return "ForumThreadDto(id=$id, title=$title, excerpt=$excerpt, authorName=$authorName, authorNickname=$authorNickname, authorId=$authorId, authorPortrait=$authorPortrait, replyCount=$replyCount, viewCount=$viewCount, lastReplyTime=$lastReplyTime, isTop=$isTop, isGood=$isGood, imageUrls=$imageUrls, forumId=$forumId, forumName=$forumName, authorModeratorRole=$authorModeratorRole)"
+    return "ForumThreadDto(id=$id, title=$title, excerpt=$excerpt, excerptContent=$excerptContent, authorName=$authorName, authorNickname=$authorNickname, authorId=$authorId, authorPortrait=$authorPortrait, replyCount=$replyCount, viewCount=$viewCount, lastReplyTime=$lastReplyTime, isTop=$isTop, isGood=$isGood, imageUrls=$imageUrls, forumId=$forumId, forumName=$forumName, authorModeratorRole=$authorModeratorRole)"
   }
 }
 
@@ -1654,6 +1658,7 @@ data class ForumPageDto (
 data class TiebaContentDto (
   val kind: String,
   val text: String,
+  val emoticonId: String,
   val url: String,
   val originalUrl: String,
   val width: Long,
@@ -1664,17 +1669,19 @@ data class TiebaContentDto (
     fun fromList(pigeonVar_list: List<Any?>): TiebaContentDto {
       val kind = pigeonVar_list[0] as String
       val text = pigeonVar_list[1] as String
-      val url = pigeonVar_list[2] as String
-      val originalUrl = pigeonVar_list[3] as String
-      val width = pigeonVar_list[4] as Long
-      val height = pigeonVar_list[5] as Long
-      return TiebaContentDto(kind, text, url, originalUrl, width, height)
+      val emoticonId = pigeonVar_list[2] as String
+      val url = pigeonVar_list[3] as String
+      val originalUrl = pigeonVar_list[4] as String
+      val width = pigeonVar_list[5] as Long
+      val height = pigeonVar_list[6] as Long
+      return TiebaContentDto(kind, text, emoticonId, url, originalUrl, width, height)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
       kind,
       text,
+      emoticonId,
       url,
       originalUrl,
       width,
@@ -1689,13 +1696,14 @@ data class TiebaContentDto (
       return true
     }
     val other = other as TiebaContentDto
-    return CithubApiPigeonUtils.deepEquals(this.kind, other.kind) && CithubApiPigeonUtils.deepEquals(this.text, other.text) && CithubApiPigeonUtils.deepEquals(this.url, other.url) && CithubApiPigeonUtils.deepEquals(this.originalUrl, other.originalUrl) && CithubApiPigeonUtils.deepEquals(this.width, other.width) && CithubApiPigeonUtils.deepEquals(this.height, other.height)
+    return CithubApiPigeonUtils.deepEquals(this.kind, other.kind) && CithubApiPigeonUtils.deepEquals(this.text, other.text) && CithubApiPigeonUtils.deepEquals(this.emoticonId, other.emoticonId) && CithubApiPigeonUtils.deepEquals(this.url, other.url) && CithubApiPigeonUtils.deepEquals(this.originalUrl, other.originalUrl) && CithubApiPigeonUtils.deepEquals(this.width, other.width) && CithubApiPigeonUtils.deepEquals(this.height, other.height)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
     result = 31 * result + CithubApiPigeonUtils.deepHash(this.kind)
     result = 31 * result + CithubApiPigeonUtils.deepHash(this.text)
+    result = 31 * result + CithubApiPigeonUtils.deepHash(this.emoticonId)
     result = 31 * result + CithubApiPigeonUtils.deepHash(this.url)
     result = 31 * result + CithubApiPigeonUtils.deepHash(this.originalUrl)
     result = 31 * result + CithubApiPigeonUtils.deepHash(this.width)
@@ -1703,7 +1711,7 @@ data class TiebaContentDto (
     return result
   }
   override fun toString(): String {
-    return "TiebaContentDto(kind=$kind, text=$text, url=$url, originalUrl=$originalUrl, width=$width, height=$height)"
+    return "TiebaContentDto(kind=$kind, text=$text, emoticonId=$emoticonId, url=$url, originalUrl=$originalUrl, width=$width, height=$height)"
   }
 }
 

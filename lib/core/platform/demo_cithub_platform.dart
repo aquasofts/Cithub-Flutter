@@ -305,7 +305,18 @@ class DemoCithubPlatform implements CithubPlatform {
       (index) => ForumThreadDto(
         id: '${page}00$index',
         title: index == 0 ? '欢迎来到 $name 吧' : '$name 讨论帖 ${index + 1}',
-        excerpt: '这是用于离线验收页面、分页和列表状态恢复的模拟内容。',
+        excerpt: index == 0 ? '首页表情#(滑稽)#（笑尿）' : '这是用于离线验收页面、分页和列表状态恢复的模拟内容。',
+        excerptContent: [
+          TiebaContentDto(
+            kind: 'text',
+            text: index == 0 ? '首页表情#(滑稽)#（笑尿）' : '这是用于离线验收页面、分页和列表状态恢复的模拟内容。',
+            emoticonId: '',
+            url: '',
+            originalUrl: '',
+            width: 0,
+            height: 0,
+          ),
+        ],
         authorName: 'user$index',
         authorNickname: '吧友 $index',
         authorId: index + 10,
@@ -359,6 +370,7 @@ class DemoCithubPlatform implements CithubPlatform {
         TiebaContentDto(
           kind: 'text',
           text: number == 1 ? '这是主题内容。' : '这是第 $number 楼的回复。',
+          emoticonId: '',
           url: '',
           originalUrl: '',
           width: 0,
@@ -378,6 +390,7 @@ class DemoCithubPlatform implements CithubPlatform {
                   TiebaContentDto(
                     kind: 'text',
                     text: '这是预览回复 ${index + 1}。',
+                    emoticonId: '',
                     url: '',
                     originalUrl: '',
                     width: 0,
@@ -423,6 +436,7 @@ class DemoCithubPlatform implements CithubPlatform {
           TiebaContentDto(
             kind: 'text',
             text: '这是楼中楼回复。',
+            emoticonId: '',
             url: '',
             originalUrl: '',
             width: 0,

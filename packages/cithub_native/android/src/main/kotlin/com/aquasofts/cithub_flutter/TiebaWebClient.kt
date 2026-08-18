@@ -68,6 +68,8 @@ internal class TiebaWebClient(private val logs: RuntimeLogStore) {
                 id,
                 titleLink.text().ifBlank { "无标题" },
                 element.selectFirst(".threadlist_abs, .threadlist_text")?.text().orEmpty(),
+                element.selectFirst(".threadlist_abs, .threadlist_text")?.text().orEmpty()
+                    .takeIf(String::isNotEmpty)?.let { listOf(text(it)) }.orEmpty(),
                 author,
                 author,
                 data.optLong("author_id"),
@@ -115,7 +117,9 @@ internal class TiebaWebClient(private val logs: RuntimeLogStore) {
             val forumInfo = post.optJSONObject("forum_info") ?: JSONObject()
             ForumThreadDto(
                 post.optString("tid"), post.optString("title", "无标题"),
-                Jsoup.parse(post.optString("content")).text(), user.optString("user_name"),
+                Jsoup.parse(post.optString("content")).text(),
+                listOf(text(Jsoup.parse(post.optString("content")).text())),
+                user.optString("user_name"),
                 user.optString("show_nickname", user.optString("user_name")), user.optLong("user_id"),
                 portrait(user.optString("portrait")), post.optString("post_num"), "",
                 post.optLong("time").takeIf { it > 0 }?.let { java.time.Instant.ofEpochSecond(it).toString() }.orEmpty(),
@@ -247,7 +251,7 @@ internal class TiebaWebClient(private val logs: RuntimeLogStore) {
             val clone = node.clone()
             clone.select("img").forEach { image ->
                 val url = https(image.absUrl("src").ifBlank { image.attr("src") })
-                if (url.isNotBlank()) contents += TiebaContentDto("image", "", url, url, 0, 0)
+                if (url.isNotBlank()) contents += TiebaContentDto("image", "", "", url, url, 0, 0)
                 image.remove()
             }
             if (clone.text().isNotBlank()) contents.add(0, text(clone.text()))
@@ -324,7 +328,7 @@ internal class TiebaWebClient(private val logs: RuntimeLogStore) {
     }.getOrDefault(JSONObject())
 
     private fun encode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())
-    private fun text(value: String) = TiebaContentDto("text", value, "", "", 0, 0)
+    private fun text(value: String) = TiebaContentDto("text", value, "", "", "", 0, 0)
     private fun portrait(value: String): String = value.takeIf(String::isNotBlank)?.let {
         "https://himg.bdimg.com/sys/portrait/item/$it.jpg"
     }.orEmpty()

@@ -68,6 +68,24 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(find.byKey(const Key('tieba-emoticon-滑稽')), findsOneWidget);
+      expect(find.byKey(const Key('tieba-emoticon-笑尿')), findsOneWidget);
+      expect(
+        find.byKey(const Key('thread-multi-image-preview')),
+        findsOneWidget,
+      );
+      final left = tester.getTopLeft(
+        find.byKey(const Key('thread-preview-image-0')),
+      );
+      final middle = tester.getTopLeft(
+        find.byKey(const Key('thread-preview-image-1')),
+      );
+      final right = tester.getTopLeft(
+        find.byKey(const Key('thread-preview-image-2')),
+      );
+      expect(left.dx, lessThan(middle.dx));
+      expect(middle.dx, lessThan(right.dx));
+
       await tester.tap(find.text('欢迎来到 长春工程学院 吧'));
       await tester.pumpAndSettle();
 
@@ -75,7 +93,20 @@ void main() {
       final authorLeft = tester.getTopLeft(find.text('楼主').first).dx;
       expect(titleLeft, lessThan(authorLeft));
       expect(find.byKey(const Key('tieba-emoticon-滑稽')), findsOneWidget);
+      expect(find.byKey(const Key('tieba-emoticon-笑尿')), findsOneWidget);
+      expect(find.byKey(const Key('tieba-emoticon-笑尿-2')), findsOneWidget);
+      expect(find.textContaining('#（未知）', findRichText: true), findsOneWidget);
       expect(find.textContaining('可见用户名', findRichText: true), findsOneWidget);
+      expect(find.textContaining('可见用户名：：', findRichText: true), findsNothing);
+      expect(
+        find.byKey(const Key('thread-body-replies-divider')),
+        findsOneWidget,
+      );
+      expect(
+        tester.getSize(find.byKey(const Key('floor-reply-preview'))).width,
+        greaterThan(200),
+      );
+      expect(find.byIcon(Icons.school), findsNothing);
       expect(find.text('查看 1 条回复'), findsNothing);
 
       expect(find.byTooltip('回到顶部'), findsNothing);
@@ -116,7 +147,7 @@ void main() {
       };
       final title = find.descendant(
         of: find.byKey(scrollKey),
-        matching: find.text(tab),
+        matching: find.text(tab == '教务' ? '教务系统' : tab),
       );
       expect(title, findsOneWidget);
       expect(tester.getTopLeft(title).dy, lessThan(80));
@@ -351,6 +382,47 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('signed-in academic UI uses compact rows and grade filtering', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final platform = _SignedInAcademicPlatform();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [cithubPlatformProvider.overrideWithValue(platform)],
+        child: const CithubApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('教务').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('9 项学生服务'), findsOneWidget);
+    expect(find.byType(SliverGrid), findsNothing);
+    expect(
+      tester.getTopLeft(find.text('成绩查询').first).dx,
+      tester.getTopLeft(find.text('我的课表').first).dx,
+    );
+    expect(
+      tester.getTopLeft(find.text('成绩查询').first).dy,
+      lessThan(tester.getTopLeft(find.text('我的课表').first).dy),
+    );
+
+    await tester.tap(find.text('成绩查询').first);
+    await tester.pumpAndSettle();
+    expect(find.text('同一课程只显示最好成绩'), findsOneWidget);
+    await tester.tap(find.text('同一课程只显示最好成绩'));
+    await tester.tap(find.text('查询成绩'));
+    await tester.pumpAndSettle();
+    expect(platform.lastBestOnly, isTrue);
+    expect(find.text('程序设计基础'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('student evaluation loads typed form and confirms submission', (
     tester,
   ) async {
@@ -449,6 +521,29 @@ class _DelayedTiebaPlatform extends DemoCithubPlatform {
 
 class _TiebaLayoutPlatform extends DemoCithubPlatform {
   @override
+  Future<ForumPageDto> loadForum(
+    String name, {
+    int page = 1,
+    String sort = 'reply',
+    bool goodOnly = false,
+  }) async {
+    final result = await super.loadForum(
+      name,
+      page: page,
+      sort: sort,
+      goodOnly: goodOnly,
+    );
+    result.threads.first.imageUrls = const [
+      'https://example.edu/left.jpg',
+      'https://example.edu/middle.jpg',
+      'https://example.edu/right.jpg',
+    ];
+    result.threads.first.isTop = false;
+    result.threads[1].authorModeratorRole = TiebaModeratorRole.assistant;
+    return result;
+  }
+
+  @override
   Future<ThreadPageDto> loadThread(
     String threadId,
     int forumId,
@@ -468,7 +563,17 @@ class _TiebaLayoutPlatform extends DemoCithubPlatform {
     result.body!.content = [
       TiebaContentDto(
         kind: 'text',
-        text: '正文开头#(滑稽)正文结尾',
+        text: '正文开头#(滑稽)#（笑尿）#（未知）正文结尾',
+        emoticonId: '',
+        url: '',
+        originalUrl: '',
+        width: 0,
+        height: 0,
+      ),
+      TiebaContentDto(
+        kind: 'emoticon',
+        text: '笑尿',
+        emoticonId: 'image_emoticon89',
         url: '',
         originalUrl: '',
         width: 0,
@@ -486,7 +591,8 @@ class _TiebaLayoutPlatform extends DemoCithubPlatform {
         content: [
           TiebaContentDto(
             kind: 'text',
-            text: '只有一条楼中楼回复',
+            text: '：只有一条楼中楼回复',
+            emoticonId: '',
             url: '',
             originalUrl: '',
             width: 0,
@@ -541,5 +647,41 @@ class _SignedInMinePlatform extends DemoCithubPlatform {
   Future<bool> logoutTieba() async {
     tiebaLogouts++;
     return true;
+  }
+}
+
+class _SignedInAcademicPlatform extends DemoCithubPlatform {
+  bool? lastBestOnly;
+
+  WebVpnSessionDto get _signedInSession => WebVpnSessionDto(
+    status: AuthStatus.signedIn,
+    requiredAction: RequiredAccountAction.none,
+    user: UserInfoDto(
+      username: '20260001',
+      nickname: '测试同学',
+      fullName: '测试同学',
+      groups: const ['学生'],
+      authType: 1,
+      bindWechat: true,
+      bindOtp: false,
+    ),
+    savedAccounts: const [],
+    requiresCaptcha: false,
+  );
+
+  @override
+  Future<WebVpnSessionDto> initializeWebVpn() async => _signedInSession;
+
+  @override
+  Future<WebVpnSessionDto> initializeAcademic(String webVpnUsername) async =>
+      _signedInSession;
+
+  @override
+  Future<List<CourseGradeDto>> loadGrades(
+    String term, {
+    bool bestOnly = false,
+  }) {
+    lastBestOnly = bestOnly;
+    return super.loadGrades(term, bestOnly: bestOnly);
   }
 }

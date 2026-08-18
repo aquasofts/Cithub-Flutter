@@ -76,4 +76,52 @@ void main() {
     expect(html, isNot(contains('&nbsp;')));
     expect(html.indexOf('第一段'), lessThan(html.indexOf('第二段')));
   });
+
+  test(
+    'safe article HTML keeps safe WeChat layout and lazy image attributes',
+    () {
+      const article = NewsArticle(
+        id: '4',
+        source: '学生工作处',
+        title: '公众号排版测试',
+        link: 'https://mp.weixin.qq.com/s/example',
+        summary: '',
+        html: '''
+        <section style="display:flex;width:677px;margin:0 auto;position:fixed;background-image:url(https://unsafe.test/a.png)">
+          <img data-src="https://mmbiz.qpic.cn/example.jpg" onload="steal()">
+        </section>
+      ''',
+        publishedAt: null,
+        section: NewsSection.wechat,
+      );
+
+      final html = buildSafeNewsHtml(article);
+      expect(html, contains('display: flex'));
+      expect(html, contains('width: 677px'));
+      expect(html, contains('https://mmbiz.qpic.cn/example.jpg'));
+      expect(html, isNot(contains('position: fixed')));
+      expect(html, isNot(contains('background-image')));
+      expect(html, isNot(contains('steal()')));
+    },
+  );
+
+  test('safe article HTML upgrades only trusted CCIT HTTP images', () {
+    const article = NewsArticle(
+      id: '5',
+      source: '学校新闻',
+      title: '官方图片测试',
+      link: 'https://www.ccit.edu.cn/info/1.htm',
+      summary: '',
+      html: '''
+        <img src="http://www.ccit.edu.cn/__local/a.jpg">
+        <img src="http://unsafe.test/a.jpg">
+      ''',
+      publishedAt: null,
+      section: NewsSection.official,
+    );
+
+    final html = buildSafeNewsHtml(article);
+    expect(html, contains('https://www.ccit.edu.cn/__local/a.jpg'));
+    expect(html, isNot(contains('http://unsafe.test')));
+  });
 }

@@ -1726,6 +1726,7 @@ class ForumThreadDto {
     required this.id,
     required this.title,
     required this.excerpt,
+    required this.excerptContent,
     required this.authorName,
     required this.authorNickname,
     required this.authorId,
@@ -1746,6 +1747,8 @@ class ForumThreadDto {
   String title;
 
   String excerpt;
+
+  List<TiebaContentDto> excerptContent;
 
   String authorName;
 
@@ -1778,6 +1781,7 @@ class ForumThreadDto {
       id,
       title,
       excerpt,
+      excerptContent,
       authorName,
       authorNickname,
       authorId,
@@ -1804,19 +1808,20 @@ class ForumThreadDto {
       id: result[0]! as String,
       title: result[1]! as String,
       excerpt: result[2]! as String,
-      authorName: result[3]! as String,
-      authorNickname: result[4]! as String,
-      authorId: result[5]! as int,
-      authorPortrait: result[6]! as String,
-      replyCount: result[7]! as String,
-      viewCount: result[8]! as String,
-      lastReplyTime: result[9]! as String,
-      isTop: result[10]! as bool,
-      isGood: result[11]! as bool,
-      imageUrls: (result[12]! as List<Object?>).cast<String>(),
-      forumId: result[13]! as int,
-      forumName: result[14]! as String,
-      authorModeratorRole: result[15]! as TiebaModeratorRole,
+      excerptContent: (result[3]! as List<Object?>).cast<TiebaContentDto>(),
+      authorName: result[4]! as String,
+      authorNickname: result[5]! as String,
+      authorId: result[6]! as int,
+      authorPortrait: result[7]! as String,
+      replyCount: result[8]! as String,
+      viewCount: result[9]! as String,
+      lastReplyTime: result[10]! as String,
+      isTop: result[11]! as bool,
+      isGood: result[12]! as bool,
+      imageUrls: (result[13]! as List<Object?>).cast<String>(),
+      forumId: result[14]! as int,
+      forumName: result[15]! as String,
+      authorModeratorRole: result[16]! as TiebaModeratorRole,
     );
   }
 
@@ -1832,6 +1837,7 @@ class ForumThreadDto {
     return _deepEquals(id, other.id) &&
         _deepEquals(title, other.title) &&
         _deepEquals(excerpt, other.excerpt) &&
+        _deepEquals(excerptContent, other.excerptContent) &&
         _deepEquals(authorName, other.authorName) &&
         _deepEquals(authorNickname, other.authorNickname) &&
         _deepEquals(authorId, other.authorId) &&
@@ -1853,7 +1859,7 @@ class ForumThreadDto {
 
   @override
   String toString() {
-    return 'ForumThreadDto(id: $id, title: $title, excerpt: $excerpt, authorName: $authorName, authorNickname: $authorNickname, authorId: $authorId, authorPortrait: $authorPortrait, replyCount: $replyCount, viewCount: $viewCount, lastReplyTime: $lastReplyTime, isTop: $isTop, isGood: $isGood, imageUrls: $imageUrls, forumId: $forumId, forumName: $forumName, authorModeratorRole: $authorModeratorRole)';
+    return 'ForumThreadDto(id: $id, title: $title, excerpt: $excerpt, excerptContent: $excerptContent, authorName: $authorName, authorNickname: $authorNickname, authorId: $authorId, authorPortrait: $authorPortrait, replyCount: $replyCount, viewCount: $viewCount, lastReplyTime: $lastReplyTime, isTop: $isTop, isGood: $isGood, imageUrls: $imageUrls, forumId: $forumId, forumName: $forumName, authorModeratorRole: $authorModeratorRole)';
   }
 }
 
@@ -1920,6 +1926,7 @@ class TiebaContentDto {
   TiebaContentDto({
     required this.kind,
     required this.text,
+    required this.emoticonId,
     required this.url,
     required this.originalUrl,
     required this.width,
@@ -1930,6 +1937,8 @@ class TiebaContentDto {
 
   String text;
 
+  String emoticonId;
+
   String url;
 
   String originalUrl;
@@ -1939,7 +1948,7 @@ class TiebaContentDto {
   int height;
 
   List<Object?> _toList() {
-    return <Object?>[kind, text, url, originalUrl, width, height];
+    return <Object?>[kind, text, emoticonId, url, originalUrl, width, height];
   }
 
   Object encode() {
@@ -1951,10 +1960,11 @@ class TiebaContentDto {
     return TiebaContentDto(
       kind: result[0]! as String,
       text: result[1]! as String,
-      url: result[2]! as String,
-      originalUrl: result[3]! as String,
-      width: result[4]! as int,
-      height: result[5]! as int,
+      emoticonId: result[2]! as String,
+      url: result[3]! as String,
+      originalUrl: result[4]! as String,
+      width: result[5]! as int,
+      height: result[6]! as int,
     );
   }
 
@@ -1969,6 +1979,7 @@ class TiebaContentDto {
     }
     return _deepEquals(kind, other.kind) &&
         _deepEquals(text, other.text) &&
+        _deepEquals(emoticonId, other.emoticonId) &&
         _deepEquals(url, other.url) &&
         _deepEquals(originalUrl, other.originalUrl) &&
         _deepEquals(width, other.width) &&
@@ -1981,7 +1992,7 @@ class TiebaContentDto {
 
   @override
   String toString() {
-    return 'TiebaContentDto(kind: $kind, text: $text, url: $url, originalUrl: $originalUrl, width: $width, height: $height)';
+    return 'TiebaContentDto(kind: $kind, text: $text, emoticonId: $emoticonId, url: $url, originalUrl: $originalUrl, width: $width, height: $height)';
   }
 }
 

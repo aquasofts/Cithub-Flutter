@@ -116,9 +116,9 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen>
       slivers: [
         SliverAppBar(
           pinned: true,
-          toolbarHeight: 72,
+          toolbarHeight: 68,
           titleSpacing: 20,
-          title: const Text('教务'),
+          title: const Text('教务系统'),
           actions: [
             IconButton(
               tooltip: '功能排序',
@@ -277,18 +277,29 @@ class _AcademicSessionSliverState
       return SliverMainAxisGroup(
         slivers: [
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            padding: const EdgeInsets.fromLTRB(20, 8, 12, 10),
             sliver: SliverToBoxAdapter(
-              child: Card(
-                child: ListTile(
-                  leading: const CircleAvatar(child: Icon(Icons.verified_user)),
-                  title: Text(
-                    academic.user?.fullName ??
-                        academic.user?.username ??
-                        '教务已登录',
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${widget.features.length} 项学生服务',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        Text(
+                          academic.user?.fullName ??
+                              academic.user?.username ??
+                              '教务已登录',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
                   ),
-                  subtitle: const Text('WebVPN 与教务系统会话均有效'),
-                  trailing: PopupMenuButton<String>(
+                  PopupMenuButton<String>(
+                    tooltip: '账户操作',
                     onSelected: (value) async {
                       if (value == 'academic') {
                         await ref.read(cithubPlatformProvider).logoutAcademic();
@@ -308,29 +319,17 @@ class _AcademicSessionSliverState
                       PopupMenuItem(value: 'webvpn', child: Text('退出 WebVPN')),
                     ],
                   ),
-                ),
+                ],
               ),
             ),
           ),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
-            sliver: SliverLayoutBuilder(
-              builder: (context, constraints) {
-                final columns = constraints.crossAxisExtent >= 700 ? 3 : 2;
-                return SliverGrid.builder(
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: columns,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: constraints.crossAxisExtent < 360
-                        ? 0.92
-                        : 1.15,
-                  ),
-                  itemCount: widget.features.length,
-                  itemBuilder: (_, index) =>
-                      _AcademicFeatureCard(feature: widget.features[index]),
-                );
-              },
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
+            sliver: SliverList.separated(
+              itemCount: widget.features.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 12),
+              itemBuilder: (_, index) =>
+                  _AcademicFeatureCard(feature: widget.features[index]),
             ),
           ),
         ],
@@ -396,7 +395,8 @@ class _WebVpnLoginPanelState extends State<WebVpnLoginPanel> {
   }
 
   @override
-  Widget build(BuildContext context) => Center(
+  Widget build(BuildContext context) => Align(
+    alignment: Alignment.topCenter,
     child: Padding(
       padding: EdgeInsets.all(
         MediaQuery.sizeOf(context).width <= 360 ? 12 : 20,
@@ -405,26 +405,46 @@ class _WebVpnLoginPanelState extends State<WebVpnLoginPanel> {
         constraints: const BoxConstraints(maxWidth: 480),
         child: Card(
           child: Padding(
-            padding: EdgeInsets.all(
-              MediaQuery.sizeOf(context).width <= 360 ? 16 : 20,
-            ),
+            padding: const EdgeInsets.all(18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Icon(
-                  widget.icon,
-                  size: 48,
-                  color: Theme.of(context).colorScheme.primary,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(
+                        widget.icon,
+                        size: 25,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.title,
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            widget.description,
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  widget.title,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
-                const SizedBox(height: 6),
-                Text(widget.description, textAlign: TextAlign.center),
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
                 if (widget.session.savedAccounts.isNotEmpty) ...[
                   Text('已保存账号', style: Theme.of(context).textTheme.labelLarge),
                   const SizedBox(height: 8),
@@ -502,38 +522,57 @@ class _WebVpnLoginPanelState extends State<WebVpnLoginPanel> {
                 ),
                 if (widget.session.requiresCaptcha) ...[
                   const SizedBox(height: 12),
-                  if ((widget.session.captcha?.base64Image ?? '').isNotEmpty)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.memory(
-                        base64Decode(
-                          widget.session.captcha!.base64Image.contains(',')
-                              ? widget.session.captcha!.base64Image
-                                    .split(',')
-                                    .last
-                              : widget.session.captcha!.base64Image,
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final image =
+                          (widget.session.captcha?.base64Image ?? '').isEmpty
+                          ? null
+                          : ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image.memory(
+                                base64Decode(
+                                  widget.session.captcha!.base64Image.contains(
+                                        ',',
+                                      )
+                                      ? widget.session.captcha!.base64Image
+                                            .split(',')
+                                            .last
+                                      : widget.session.captcha!.base64Image,
+                                ),
+                                width: 104,
+                                height: 52,
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, _, _) =>
+                                    const SizedBox.shrink(),
+                              ),
+                            );
+                      final field = TextField(
+                        controller: _captcha,
+                        decoration: InputDecoration(
+                          labelText: '验证码',
+                          suffixIcon: IconButton(
+                            onPressed: widget.onRefreshCaptcha,
+                            tooltip: '刷新验证码',
+                            icon: const Icon(Icons.refresh),
+                          ),
                         ),
-                        height: 72,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, _, _) => const SizedBox.shrink(),
-                      ),
-                    ),
-                  if ((widget.session.captcha?.base64Image ?? '').isNotEmpty)
-                    const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _captcha,
-                          decoration: const InputDecoration(labelText: '验证码'),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: widget.onRefreshCaptcha,
-                        tooltip: '刷新验证码',
-                        icon: const Icon(Icons.refresh),
-                      ),
-                    ],
+                      );
+                      if (image == null) return field;
+                      if (constraints.maxWidth < 270) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [image, const SizedBox(height: 8), field],
+                        );
+                      }
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          image,
+                          const SizedBox(width: 10),
+                          Expanded(child: field),
+                        ],
+                      );
+                    },
                   ),
                   if ((widget.session.captcha?.recognizedCode ?? '').isNotEmpty)
                     const Padding(
@@ -596,17 +635,39 @@ class _AcademicFeatureCard extends StatelessWidget {
       },
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Icon(feature.icon, size: 30),
-            const Spacer(),
-            Text(feature.title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 4),
-            Text(
-              feature.subtitle,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                feature.icon,
+                size: 24,
+                color: Theme.of(context).colorScheme.onPrimaryContainer,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    feature.title,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    feature.subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -615,24 +676,218 @@ class _AcademicFeatureCard extends StatelessWidget {
   );
 }
 
-class GradesScreen extends ConsumerWidget {
+class GradesScreen extends ConsumerStatefulWidget {
   const GradesScreen({super.key});
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) =>
-      _TermAcademicListPage<CourseGradeDto>(
-        title: '成绩查询',
-        load: (term) => ref.read(cithubPlatformProvider).loadGrades(term),
-        builder: (item) => ListTile(
-          title: Text(item.courseName),
-          subtitle: Text(
-            '${item.courseCode} · ${item.credit} 学分 · 绩点 ${item.gradePoint}',
-          ),
-          trailing: Text(
-            item.score,
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
+  ConsumerState<GradesScreen> createState() => _GradesScreenState();
+}
+
+class _GradesScreenState extends ConsumerState<GradesScreen> {
+  late final Future<List<AcademicTermDto>> _terms;
+  String? _selected;
+  bool _bestOnly = false;
+  Future<List<CourseGradeDto>>? _items;
+
+  @override
+  void initState() {
+    super.initState();
+    _terms = ref.read(cithubPlatformProvider).loadAcademicTerms();
+  }
+
+  void _load() {
+    if (_selected == null) return;
+    setState(() {
+      _items = ref
+          .read(cithubPlatformProvider)
+          .loadGrades(_selected!, bestOnly: _bestOnly);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('成绩查询')),
+    body: FutureBuilder<List<AcademicTermDto>>(
+      future: _terms,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(child: Text('学期加载失败：${snapshot.error}'));
+        }
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final terms = snapshot.requireData;
+        if (terms.isEmpty) return const Center(child: Text('教务系统未返回学期'));
+        _selected ??=
+            terms.where((term) => term.selected).firstOrNull?.value ??
+            terms.first.value;
+        _items ??= ref
+            .read(cithubPlatformProvider)
+            .loadGrades(_selected!, bestOnly: _bestOnly);
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.school_outlined,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '成绩查询',
+                                  style: Theme.of(context).textTheme.titleLarge,
+                                ),
+                                Text(
+                                  '按学期筛选课程成绩',
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      LayoutBuilder(
+                        builder: (context, constraints) => DropdownMenu<String>(
+                          width: constraints.maxWidth,
+                          initialSelection: _selected,
+                          label: const Text('学年学期'),
+                          dropdownMenuEntries: terms
+                              .map(
+                                (term) => DropdownMenuEntry(
+                                  value: term.value,
+                                  label: term.label,
+                                ),
+                              )
+                              .toList(),
+                          onSelected: (value) {
+                            if (value != null) {
+                              setState(() => _selected = value);
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      CheckboxListTile(
+                        value: _bestOnly,
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        title: const Text('同一课程只显示最好成绩'),
+                        onChanged: (value) =>
+                            setState(() => _bestOnly = value ?? false),
+                      ),
+                      const SizedBox(height: 8),
+                      FilledButton.icon(
+                        onPressed: _load,
+                        icon: const Icon(Icons.search),
+                        label: const Text('查询成绩'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: FutureBuilder<List<CourseGradeDto>>(
+                future: _items,
+                builder: (context, items) {
+                  if (items.hasError) {
+                    return Center(child: Text('加载失败：${items.error}'));
+                  }
+                  if (!items.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (items.requireData.isEmpty) {
+                    return const Center(child: Text('该学期暂无记录'));
+                  }
+                  return ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
+                    itemCount: items.requireData.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
+                    itemBuilder: (_, index) =>
+                        _GradeCard(item: items.requireData[index]),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+}
+
+class _GradeCard extends StatelessWidget {
+  const _GradeCard({required this.item});
+
+  final CourseGradeDto item;
+
+  @override
+  Widget build(BuildContext context) {
+    final details = [
+      if (item.credit.isNotEmpty) '学分 ${item.credit}',
+      if (item.gradePoint.isNotEmpty) '绩点 ${item.gradePoint}',
+      if (item.assessmentMethod.isNotEmpty) item.assessmentMethod,
+      if (item.courseAttribute.isNotEmpty) item.courseAttribute,
+      if (item.courseNature.isNotEmpty) item.courseNature,
+    ].join(' · ');
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.courseName,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '${item.semester} · ${item.courseCode}',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  item.score,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            if (details.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(details, style: Theme.of(context).textTheme.bodyMedium),
+            ],
+          ],
         ),
-      );
+      ),
+    );
+  }
 }
 
 class SelectionResultsScreen extends ConsumerWidget {
@@ -707,22 +962,29 @@ class _TermAcademicListPageState<T>
         return Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-              child: DropdownMenu<String>(
-                width: double.infinity,
-                initialSelection: _selected,
-                label: const Text('学期'),
-                dropdownMenuEntries: terms
-                    .map(
-                      (term) => DropdownMenuEntry(
-                        value: term.value,
-                        label: term.label,
-                      ),
-                    )
-                    .toList(),
-                onSelected: (value) {
-                  if (value != null) _select(value);
-                },
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) => DropdownMenu<String>(
+                      width: constraints.maxWidth,
+                      initialSelection: _selected,
+                      label: const Text('学期'),
+                      dropdownMenuEntries: terms
+                          .map(
+                            (term) => DropdownMenuEntry(
+                              value: term.value,
+                              label: term.label,
+                            ),
+                          )
+                          .toList(),
+                      onSelected: (value) {
+                        if (value != null) _select(value);
+                      },
+                    ),
+                  ),
+                ),
               ),
             ),
             Expanded(
@@ -739,11 +1001,11 @@ class _TermAcademicListPageState<T>
                     return const Center(child: Text('该学期暂无记录'));
                   }
                   return ListView.separated(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
                     itemCount: items.requireData.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
                     itemBuilder: (_, index) =>
-                        widget.builder(items.requireData[index]),
+                        Card(child: widget.builder(items.requireData[index])),
                   );
                 },
               ),
@@ -1034,7 +1296,7 @@ class TimetableScreen extends ConsumerWidget {
         }
         final data = snapshot.requireData;
         return ListView.separated(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
           itemCount: data.courses.length,
           separatorBuilder: (_, _) => const SizedBox(height: 10),
           itemBuilder: (_, index) {
@@ -1078,10 +1340,11 @@ class _AcademicListPage<T> extends StatelessWidget {
           return const Center(child: CircularProgressIndicator());
         }
         return ListView.separated(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
           itemCount: snapshot.requireData.length,
-          separatorBuilder: (_, _) => const Divider(height: 1),
-          itemBuilder: (_, index) => builder(snapshot.requireData[index]),
+          separatorBuilder: (_, _) => const SizedBox(height: 12),
+          itemBuilder: (_, index) =>
+              Card(child: builder(snapshot.requireData[index])),
         );
       },
     ),

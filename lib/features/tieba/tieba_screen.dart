@@ -390,7 +390,7 @@ class _ThreadTile extends StatelessWidget {
               _Avatar(
                 url: thread.authorPortrait,
                 label: thread.authorNickname,
-                radius: 22,
+                radius: 19,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -401,7 +401,7 @@ class _ThreadTile extends StatelessWidget {
                       thread.authorNickname,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall,
+                      style: Theme.of(context).textTheme.titleMedium,
                     ),
                     Wrap(
                       spacing: 6,
@@ -443,10 +443,13 @@ class _ThreadTile extends StatelessWidget {
               ),
             ],
           ),
-          if (thread.excerpt.isNotEmpty) ...[
+          if (thread.excerptContent.isNotEmpty ||
+              thread.excerpt.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(
-              thread.excerpt,
+            _TiebaInlineText(
+              content: thread.excerptContent.isNotEmpty
+                  ? thread.excerptContent
+                  : [_textTiebaContent(thread.excerpt)],
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodyMedium,
@@ -454,24 +457,7 @@ class _ThreadTile extends StatelessWidget {
           ],
           if (thread.imageUrls.isNotEmpty) ...[
             const SizedBox(height: 10),
-            SizedBox(
-              height: 108,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: thread.imageUrls.take(3).length,
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
-                itemBuilder: (_, index) => ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: CachedNetworkImage(
-                    imageUrl: thread.imageUrls[index],
-                    width: 138,
-                    height: 108,
-                    fit: BoxFit.cover,
-                    errorWidget: (_, _, _) => const SizedBox.shrink(),
-                  ),
-                ),
-              ),
-            ),
+            _ThreadImagePreview(urls: thread.imageUrls.take(3).toList()),
           ],
           if (thread.viewCount.isNotEmpty) ...[
             const SizedBox(height: 8),
@@ -484,6 +470,47 @@ class _ThreadTile extends StatelessWidget {
       ),
     ),
   );
+}
+
+class _ThreadImagePreview extends StatelessWidget {
+  const _ThreadImagePreview({required this.urls});
+
+  final List<String> urls;
+
+  Widget _image(String url, int index) => ClipRRect(
+    key: Key('thread-preview-image-$index'),
+    borderRadius: BorderRadius.circular(10),
+    child: CachedNetworkImage(
+      imageUrl: url,
+      width: double.infinity,
+      height: double.infinity,
+      fit: BoxFit.cover,
+      errorWidget: (_, _, _) => const SizedBox.shrink(),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    if (urls.length == 1) {
+      return AspectRatio(
+        key: const Key('thread-single-image-preview'),
+        aspectRatio: 2,
+        child: _image(urls.first, 0),
+      );
+    }
+    return SizedBox(
+      key: const Key('thread-multi-image-preview'),
+      height: 96,
+      child: Row(
+        children: [
+          for (var index = 0; index < urls.length; index++) ...[
+            if (index > 0) const SizedBox(width: 6),
+            Expanded(child: _image(urls[index], index)),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 class ThreadScreen extends ConsumerStatefulWidget {
@@ -605,36 +632,19 @@ class _ThreadScreenState extends ConsumerState<ThreadScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      toolbarHeight: 80,
-      titleSpacing: 4,
-      title: Row(
+      toolbarHeight: 68,
+      titleSpacing: 8,
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          CircleAvatar(
-            radius: 23,
-            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-            child: Icon(
-              Icons.school,
-              color: Theme.of(context).colorScheme.onPrimaryContainer,
-            ),
+          Text(
+            widget.thread.forumName.isEmpty ? '贴吧' : widget.thread.forumName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleLarge,
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  widget.thread.forumName.isEmpty
-                      ? '贴吧'
-                      : widget.thread.forumName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                Text('校园贴吧', style: Theme.of(context).textTheme.bodySmall),
-              ],
-            ),
-          ),
+          Text('校园贴吧', style: Theme.of(context).textTheme.bodySmall),
         ],
       ),
       actions: [
@@ -671,6 +681,17 @@ class _ThreadScreenState extends ConsumerState<ThreadScreen> {
                 floor: _body!,
                 title: widget.thread.title,
                 isMain: true,
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Divider(
+                  key: const Key('thread-body-replies-divider'),
+                  height: 1,
+                  thickness: 1,
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
               ),
             ),
             SliverPersistentHeader(
@@ -899,10 +920,10 @@ class _FloorCard extends ConsumerWidget {
                       floor.authorName,
                       floor.authorId,
                     ),
-                    radius: 23,
+                    radius: 18,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -956,7 +977,7 @@ class _FloorCard extends ConsumerWidget {
               ],
             ),
             Padding(
-              padding: EdgeInsets.only(left: isMain ? 0 : 58),
+              padding: EdgeInsets.only(left: isMain ? 0 : 46),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1024,34 +1045,40 @@ class _FloorReplyPreview extends StatelessWidget {
   );
 
   @override
-  Widget build(BuildContext context) => Material(
-    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-    borderRadius: BorderRadius.circular(12),
-    child: InkWell(
-      onTap: () => _open(context),
+  Widget build(BuildContext context) => SizedBox(
+    key: const Key('floor-reply-preview'),
+    width: double.infinity,
+    child: Material(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
       borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (final reply in replies)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: _TiebaInlineText(
-                  content: reply.content,
-                  prefix:
-                      '${_displayTiebaName(reply.authorNickname, reply.authorName, reply.authorId)}：',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+      child: InkWell(
+        onTap: () => _open(context),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final reply in replies)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: _TiebaInlineText(
+                    content: reply.content,
+                    prefix:
+                        '${_displayTiebaName(reply.authorNickname, reply.authorName, reply.authorId)}：',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-              ),
-            if (floor.replyCount > 1 && floor.replyCount > replies.length)
-              Text(
-                '查看全部 ${floor.replyCount} 条回复',
-                style: TextStyle(color: Theme.of(context).colorScheme.primary),
-              ),
-          ],
+              if (floor.replyCount > 1 && floor.replyCount > replies.length)
+                Text(
+                  '查看全部 ${floor.replyCount} 条回复',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     ),
@@ -1251,7 +1278,7 @@ class _FloorRepliesScreenState extends ConsumerState<FloorRepliesScreen> {
                             reply.authorName,
                             reply.authorId,
                           ),
-                          radius: 21,
+                          radius: 18,
                         ),
                         const SizedBox(width: 10),
                         Expanded(
@@ -1454,14 +1481,25 @@ List<InlineSpan> _tiebaInlineSpans(
 }) {
   final spans = <InlineSpan>[if (prefix.isNotEmpty) TextSpan(text: prefix)];
   final emoticonCounts = <String, int>{};
+  var shouldTrimReplyColon = prefix.isNotEmpty;
 
-  void addEmoticon(String rawName) {
+  void addEmoticon(
+    String rawName, {
+    String emoticonId = '',
+    String? fallbackText,
+  }) {
     final name = rawName
-        .replaceFirst(RegExp(r'^#\('), '')
-        .replaceFirst(RegExp(r'\)$'), '');
-    final asset = _tiebaEmoticonAssets[name];
+        .replaceFirst(RegExp(r'^#[（(]'), '')
+        .replaceFirst(RegExp(r'[)）]$'), '');
+    final parsedId = int.tryParse(
+      RegExp(r'(\d+)$').firstMatch(emoticonId)?.group(1) ?? '',
+    );
+    final asset =
+        parsedId != null && _tiebaBundledEmoticonIds.contains(parsedId)
+        ? _tiebaEmoticonAsset(parsedId)
+        : _tiebaEmoticonAssets[name];
     if (asset == null) {
-      spans.add(TextSpan(text: '#($name)'));
+      spans.add(TextSpan(text: fallbackText ?? '#($name)'));
       return;
     }
     final count = (emoticonCounts[name] ?? 0) + 1;
@@ -1484,20 +1522,28 @@ List<InlineSpan> _tiebaInlineSpans(
   }
 
   void addText(String text) {
+    final normalized = shouldTrimReplyColon
+        ? text.replaceFirst(RegExp(r'^\s*[：:]\s*'), '')
+        : text;
+    shouldTrimReplyColon = false;
     var offset = 0;
-    for (final match in RegExp(r'#\(([^()\n]{1,16})\)').allMatches(text)) {
+    for (final match in RegExp(
+      r'#[（(]([^()（）\n]{1,16})[)）]',
+    ).allMatches(normalized)) {
       if (match.start > offset) {
-        spans.add(TextSpan(text: text.substring(offset, match.start)));
+        spans.add(TextSpan(text: normalized.substring(offset, match.start)));
       }
-      addEmoticon(match.group(1)!);
+      addEmoticon(match.group(1)!, fallbackText: match.group(0));
       offset = match.end;
     }
-    if (offset < text.length) spans.add(TextSpan(text: text.substring(offset)));
+    if (offset < normalized.length) {
+      spans.add(TextSpan(text: normalized.substring(offset)));
+    }
   }
 
   for (final item in content) {
     if (item.kind == 'emoticon') {
-      addEmoticon(item.text);
+      addEmoticon(item.text, emoticonId: item.emoticonId);
     } else if (item.text.isNotEmpty) {
       addText(item.text);
     }
@@ -1542,7 +1588,8 @@ class _ModeratorBadge extends StatelessWidget {
       TiebaModeratorRole.none => '',
     };
     if (label.isEmpty) return const SizedBox.shrink();
-    if (role == TiebaModeratorRole.owner) {
+    if (role == TiebaModeratorRole.owner ||
+        role == TiebaModeratorRole.assistant) {
       final dark = Theme.of(context).brightness == Brightness.dark;
       return _SmallBadge(
         text: label,
@@ -1571,7 +1618,7 @@ class _SmallBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
     decoration: BoxDecoration(
       color:
           backgroundColor ?? Theme.of(context).colorScheme.secondaryContainer,
@@ -1579,7 +1626,7 @@ class _SmallBadge extends StatelessWidget {
     ),
     child: Text(
       text,
-      style: Theme.of(context).textTheme.labelMedium
+      style: Theme.of(context).textTheme.labelSmall
           ?.copyWith(color: foregroundColor),
     ),
   );
@@ -1732,6 +1779,9 @@ class _UserPostsSection extends StatelessWidget {
                                 ? '未命名主题'
                                 : posts[index].title,
                             excerpt: posts[index].excerpt,
+                            excerptContent: posts[index].excerpt.isEmpty
+                                ? const []
+                                : [_textTiebaContent(posts[index].excerpt)],
                             authorName: profile.username,
                             authorNickname: profile.nickname,
                             authorId: profile.uid,
@@ -2043,6 +2093,16 @@ String _plainTiebaContent(List<TiebaContentDto> content) => content
     )
     .join();
 
+TiebaContentDto _textTiebaContent(String text) => TiebaContentDto(
+  kind: 'text',
+  text: text,
+  emoticonId: '',
+  url: '',
+  originalUrl: '',
+  width: 0,
+  height: 0,
+);
+
 String _displayTiebaName(String nickname, String username, int userId) {
   final display = nickname.trim().isEmpty ? username.trim() : nickname.trim();
   if (display.isNotEmpty) return display;
@@ -2051,8 +2111,72 @@ String _displayTiebaName(String nickname, String username, int userId) {
 
 final Map<String, String> _tiebaEmoticonAssets = {
   for (final entry in _tiebaEmoticonIds.entries)
-    entry.key:
-        'packages/cithub_native/android/src/main/assets/tiebalite/emoticon/image_emoticon${entry.value}.webp',
+    entry.key: _tiebaEmoticonAsset(entry.value),
+};
+
+String _tiebaEmoticonAsset(int id) =>
+    'packages/cithub_native/android/src/main/assets/tiebalite/emoticon/image_emoticon$id.webp';
+
+const _tiebaBundledEmoticonIds = <int>{
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9,
+  10,
+  11,
+  12,
+  13,
+  14,
+  15,
+  16,
+  17,
+  18,
+  19,
+  20,
+  21,
+  22,
+  23,
+  24,
+  25,
+  26,
+  27,
+  28,
+  29,
+  30,
+  31,
+  32,
+  33,
+  34,
+  35,
+  36,
+  37,
+  38,
+  39,
+  40,
+  41,
+  42,
+  43,
+  44,
+  45,
+  46,
+  47,
+  48,
+  49,
+  50,
+  77,
+  78,
+  79,
+  80,
+  81,
+  82,
+  83,
+  84,
+  89,
 };
 
 const _tiebaEmoticonIds = <String, int>{
@@ -2114,6 +2238,7 @@ const _tiebaEmoticonIds = <String, int>{
   '红领巾': 82,
   '蜡烛': 83,
   '三道杠': 84,
+  '笑尿': 89,
 };
 
 String _initial(String value) {
