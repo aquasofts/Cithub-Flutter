@@ -1,0 +1,21 @@
+name: cithub_native
+description: Repository-local Android protocol and security plugin for Cithub Flutter.
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: ^3.13.0
+  flutter: '>=3.47.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  assets:
+    - android/src/main/assets/tiebalite/emoticon/
+  plugin:
+    platforms:
+      android:
+        package: com.aquasofts.cithub_flutter
+        pluginClass: CithubNativePlugin

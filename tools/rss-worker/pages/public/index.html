@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="Cloudflare Workers + Pages 多 RSS 聚合阅读页" />
+    <title>RSS 聚合中心</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script defer src="/app.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div>
+        <p class="eyebrow">Cloudflare RSS Hub</p>
+        <h1>RSS 聚合中心</h1>
+        <p class="subtitle">Worker 后台聚合，Pages 同域读取，不访问 workers.dev。</p>
+      </div>
+      <button id="reloadButton" class="button" type="button">重新加载</button>
+    </header>
+
+    <main>
+      <section class="status-panel" aria-live="polite">
+        <div>
+          <span id="statusDot" class="status-dot"></span>
+          <strong id="statusText">正在加载…</strong>
+        </div>
+        <div id="metaText" class="meta"></div>
+      </section>
+
+      <section class="toolbar" aria-label="筛选工具">
+        <label>
+          <span>关键词</span>
+          <input id="searchInput" type="search" placeholder="搜索标题或摘要" />
+        </label>
+        <label>
+          <span>来源</span>
+          <select id="sourceSelect">
+            <option value="">全部来源</option>
+          </select>
+        </label>
+      </section>
+
+      <section id="feedList" class="feed-list" aria-label="文章列表"></section>
+      <p id="emptyState" class="empty-state" hidden>没有符合条件的文章。</p>
+    </main>
+
+    <template id="articleTemplate">
+      <article class="article-card">
+        <div class="article-body">
+          <div class="article-meta">
+            <span class="source"></span>
+            <time></time>
+          </div>
+          <h2><a class="title" target="_blank" rel="noopener noreferrer"></a></h2>
+          <p class="summary"></p>
+        </div>
+        <img class="cover" alt="" loading="lazy" referrerpolicy="no-referrer" hidden />
+      </article>
+    </template>
+  </body>
+</html>

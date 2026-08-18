@@ -1,0 +1,2 @@
+-keep class com.aquasofts.cithub_flutter.** { *; }
+-keepattributes Signature,*Annotation*

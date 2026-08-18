@@ -1,0 +1,14 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "cloudflare-rss-hub-pages",
+  "pages_build_output_dir": "./public",
+  "compatibility_date": "2026-07-16",
+
+  // Pages Function 在 Cloudflare 内网调用 Worker，不使用公开 Worker URL。
+  "services": [
+    {
+      "binding": "RSS_WORKER",
+      "service": "cloudflare-rss-hub-worker"
+    }
+  ]
+}
