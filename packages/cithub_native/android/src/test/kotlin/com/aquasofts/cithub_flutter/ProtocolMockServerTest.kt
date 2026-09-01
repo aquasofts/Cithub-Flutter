@@ -39,22 +39,25 @@ class ProtocolMockServerTest {
             .setHeader("Set-Cookie", "SESSION=abc; Path=/; HttpOnly; Secure"))
         server.enqueue(json("""{"code":0,"data":{"id":"captcha-1","captcha":"data:image/png;base64,AA=="}}"""))
         server.enqueue(json("""{"code":0,"data":{"username":"20260001","nickname":"昵称","fullName":"测试同学","groups":["学生"],"authType":1,"bindWechat":true,"bindOtp":false,"needTriggerTFA":true}}"""))
+        server.enqueue(json("""{"code":0,"data":{"list":[{"name":"业务系统","sites":[{"name":"教务系统师生端","url":"https://http-10-198-47-148-8080.webvpn.ccit.edu.cn/jsxsd"}]}]}}"""))
         val client = WebVpnProtocolClient(store, logs, server.url("/").toString())
 
         val configuration = client.loadConfiguration()
         val captcha = client.loadCaptcha()
         val user = client.userInfo()
+        val academicBaseUrl = client.refreshAcademicBaseUrl()
 
         assertEquals("local", configuration.externalId)
         assertTrue(configuration.requiresPassword)
         assertTrue(configuration.requiresCaptcha)
         assertEquals("captcha-1", captcha.id)
         assertEquals("20260001", user.dto.username)
+        assertEquals("https://http-10-198-47-148-8080.webvpn.ccit.edu.cn/jsxsd/", academicBaseUrl)
+        assertEquals(academicBaseUrl, store.get(AcademicServerRouter.STORE_KEY))
         assertEquals("SESSION=abc", client.cookies())
         assertEquals("SESSION=abc", store.get("webvpn.session.cookies"))
         assertNull(server.takeRequest().getHeader("Cookie"))
-        assertEquals("SESSION=abc", server.takeRequest().getHeader("Cookie"))
-        assertEquals("SESSION=abc", server.takeRequest().getHeader("Cookie"))
+        repeat(3) { assertEquals("SESSION=abc", server.takeRequest().getHeader("Cookie")) }
     }
 
     @Test
@@ -89,35 +92,23 @@ class ProtocolMockServerTest {
     @Test
     fun academicRecognizesExpiredSessionAndRejectsExternalWebPage() {
         server.enqueue(html("""<form action="LoginToXk"><input name="userAccount"><input name="RANDOMCODE"></form>"""))
+        server.enqueue(html("""<div class="browser-compatibility">WebVPN</div><script src="/assets/index.js"></script>"""))
         val client = AcademicProtocolClient(store, logs, server.url("/jsxsd/").toString())
 
+        assertNull(client.initialize())
         assertNull(client.initialize())
         assertFalse(runCatching { client.webPageUrl("https://evil.example/") }.isSuccess)
         assertFalse(runCatching { client.webPageUrl("../admin") }.isSuccess)
     }
 
     @Test
-    fun academicRoutesAccountsToTheServerSelectedByTheSchoolLoginPage() {
-        assertEquals(
-            "https://http-10-198-47-147-8080.webvpn.ccit.edu.cn/jsxsd/",
-            AcademicServerRouter.baseUrlFor("teacher"),
-        )
-        assertEquals(
-            "https://http-10-198-47-147-8080.webvpn.ccit.edu.cn/jsxsd/",
-            AcademicServerRouter.baseUrlFor("2505422544"),
-        )
-        assertEquals(
-            "https://http-10-198-47-147-8081.webvpn.ccit.edu.cn/jsxsd/",
-            AcademicServerRouter.baseUrlFor("2505422545"),
-        )
-        assertEquals(
-            "https://http-10-198-47-148-8080.webvpn.ccit.edu.cn/jsxsd/",
-            AcademicServerRouter.baseUrlFor("2505422546"),
-        )
-        assertEquals(
-            "https://http-10-198-47-148-8081.webvpn.ccit.edu.cn/jsxsd/",
-            AcademicServerRouter.baseUrlFor("2505422547"),
-        )
+    fun academicUsesOnlyTheServerAdvertisedByWebVpn() {
+        val expected = "https://http-10-198-47-148-8080.webvpn.ccit.edu.cn/jsxsd/"
+        assertEquals(expected, AcademicServerRouter.baseUrl(store))
+        assertEquals(expected, AcademicServerRouter.remember(store, expected.removeSuffix("/")))
+        assertEquals(expected, AcademicServerRouter.baseUrl(store))
+        assertNull(AcademicServerRouter.remember(store, "https://evil.example/jsxsd"))
+        assertEquals(expected, AcademicServerRouter.baseUrl(store))
     }
 
     @Test

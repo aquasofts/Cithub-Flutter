@@ -75,6 +75,7 @@ internal class AndroidWebVpnApi(
                 request.captchaCode,
                 config,
             )
+            refreshAcademicRoute()
             state.webVpnSignedIn = true
             state.webVpnUsername = username
             syncWebViewCookies()
@@ -107,6 +108,7 @@ internal class AndroidWebVpnApi(
                 clearActiveSession()
                 return@runAsync signedOutSession("会话已失效")
             }
+            refreshAcademicRoute()
             state.webVpnSignedIn = true
             state.webVpnUsername = activeUser?.dto?.username
             syncWebViewCookies()
@@ -129,6 +131,7 @@ internal class AndroidWebVpnApi(
             val restored = runCatching { client.userInfo() }.getOrNull()
             if (restored != null) {
                 activeUser = restored
+                refreshAcademicRoute()
                 state.webVpnSignedIn = true
                 state.webVpnUsername = restored.dto.username
                 syncWebViewCookies()
@@ -158,6 +161,7 @@ internal class AndroidWebVpnApi(
                 }.getOrNull()
                 if (user != null) {
                     activeUser = user
+                    refreshAcademicRoute()
                     state.webVpnSignedIn = true
                     state.webVpnUsername = username
                     syncWebViewCookies()
@@ -173,6 +177,12 @@ internal class AndroidWebVpnApi(
 
     private fun ensureConfiguration(): WebVpnLoginConfiguration =
         configuration ?: client.loadConfiguration().also { configuration = it }
+
+    private fun refreshAcademicRoute() {
+        runCatching { client.refreshAcademicBaseUrl() }.onFailure {
+            logs.append("webvpn", "Unable to refresh academic site address; using the verified fallback")
+        }
+    }
 
     private fun refreshCaptchaBlocking() {
         val config = ensureConfiguration()

@@ -114,6 +114,24 @@ public actor WebVpnProtocolClient {
         )
     }
 
+    public func refreshAcademicBaseURL() async throws -> URL? {
+        guard let groups = try await request(
+            method: "GET", path: "api/access/nav/site-list"
+        ).object("data")?.array("list") else { return nil }
+        for rawGroup in groups {
+            guard let group = rawGroup as? [String: Any], let sites = group.array("sites") else { continue }
+            for rawSite in sites {
+                guard let site = rawSite as? [String: Any] else { continue }
+                let name = site.string("name")
+                let url = site.string("url")
+                if name.contains("教务"), url.range(of: "/jsxsd", options: .caseInsensitive) != nil {
+                    return await AcademicServerRouter.remember(url, using: store)
+                }
+            }
+        }
+        return nil
+    }
+
     public func logout() async {
         _ = try? await request(method: "POST", path: "api/access/user/logout", json: [:])
         await clearSession()

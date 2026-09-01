@@ -14,6 +14,7 @@ struct CithubNativeCoreTests {
             ),
             .json(#"{"code":0,"data":{"id":"captcha-1","captcha":"data:image/png;base64,AA=="}}"#),
             .json(#"{"code":0,"data":{"username":"20260001","nickname":"昵称","fullName":"测试同学","groups":["学生"],"authType":1,"bindWechat":true,"bindOtp":false,"needTriggerTFA":true}}"#),
+            .json(#"{"code":0,"data":{"list":[{"name":"业务系统","sites":[{"name":"教务系统师生端","url":"https://http-10-198-47-148-8080.webvpn.ccit.edu.cn/jsxsd"}]}]}}"#),
         ])
         let client = WebVpnProtocolClient(
             store: store,
@@ -25,6 +26,7 @@ struct CithubNativeCoreTests {
         let configuration = try await client.loadConfiguration()
         let captcha = try await client.loadCaptcha()
         let user = try await client.userInfo()
+        let academicBaseURL = try await client.refreshAcademicBaseURL()
 
         #expect(configuration.externalID == "local")
         #expect(configuration.requiresPassword)
@@ -32,11 +34,14 @@ struct CithubNativeCoreTests {
         #expect(captcha.id == "captcha-1")
         #expect(user.username == "20260001")
         #expect(user.requiredAction == .tfa)
+        #expect(academicBaseURL?.absoluteString == "https://http-10-198-47-148-8080.webvpn.ccit.edu.cn/jsxsd/")
+        #expect(await store.get(AcademicServerRouter.storeKey) == academicBaseURL?.absoluteString)
         #expect(await store.get("webvpn.session.cookies") == "SESSION=abc")
         let calls = await transport.recordedCalls
         #expect(calls[0].headers["Cookie"] == nil)
         #expect(calls[1].headers["Cookie"] == "SESSION=abc")
         #expect(calls[2].headers["Cookie"] == "SESSION=abc")
+        #expect(calls[3].headers["Cookie"] == "SESSION=abc")
     }
 
     @Test("Academic protocol parses core pages and preserves the WebVPN cookie")
@@ -76,13 +81,28 @@ struct CithubNativeCoreTests {
         #expect(calls.dropFirst().allSatisfy { $0.headers["Cookie"] == "SESSION=abc; JSESSIONID=xyz" })
     }
 
-    @Test("Academic routing matches the four school backends")
-    func academicRouting() {
-        #expect(AcademicServerRouter.baseURL(for: "teacher").absoluteString.contains("47-147-8080"))
-        #expect(AcademicServerRouter.baseURL(for: "2505422544").absoluteString.contains("47-147-8080"))
-        #expect(AcademicServerRouter.baseURL(for: "2505422545").absoluteString.contains("47-147-8081"))
-        #expect(AcademicServerRouter.baseURL(for: "2505422546").absoluteString.contains("47-148-8080"))
-        #expect(AcademicServerRouter.baseURL(for: "2505422547").absoluteString.contains("47-148-8081"))
+    @Test("Academic routing uses only the server advertised by WebVPN")
+    func academicRouting() async {
+        let store = MemorySecretStore()
+        let expected = "https://http-10-198-47-148-8080.webvpn.ccit.edu.cn/jsxsd/"
+        #expect(AcademicServerRouter.baseURL(from: nil).absoluteString == expected)
+        #expect(await AcademicServerRouter.remember(String(expected.dropLast()), using: store)?.absoluteString == expected)
+        #expect(AcademicServerRouter.baseURL(from: await store.get(AcademicServerRouter.storeKey)).absoluteString == expected)
+        #expect(await AcademicServerRouter.remember("https://evil.example/jsxsd", using: store) == nil)
+    }
+
+    @Test("Academic initialization treats the WebVPN shell as signed out")
+    func academicPortalShellIsNotAValidAcademicPage() async throws {
+        let client = AcademicProtocolClient(
+            store: MemorySecretStore(),
+            logger: NullRuntimeLogger(),
+            baseURL: URL(string: "https://academic.test/jsxsd/")!,
+            transport: QueueHTTPTransport([
+                .html(#"<div class="browser-compatibility">WebVPN</div><script src="/assets/index.js"></script>"#),
+            ])
+        )
+
+        #expect(try await client.initialize() == nil)
     }
 
     @Test("Tieba native forum request is protobuf and maps a pinned response")

@@ -18,6 +18,7 @@ import java.net.URL
 import java.net.URLEncoder
 import java.time.LocalDate
 import java.util.Base64
+import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -25,24 +26,40 @@ import org.jsoup.nodes.Element
 internal class AcademicLoginRequired(message: String) : IllegalStateException(message)
 
 internal object AcademicServerRouter {
-    private val baseUrls = listOf(
-        "https://http-10-198-47-147-8080.webvpn.ccit.edu.cn/jsxsd/",
-        "https://http-10-198-47-147-8081.webvpn.ccit.edu.cn/jsxsd/",
-        "https://http-10-198-47-148-8080.webvpn.ccit.edu.cn/jsxsd/",
-        "https://http-10-198-47-148-8081.webvpn.ccit.edu.cn/jsxsd/",
-    )
+    const val STORE_KEY = "academic.base_url"
+    private const val DEFAULT_BASE_URL =
+        "https://http-10-198-47-148-8080.webvpn.ccit.edu.cn/jsxsd/"
 
-    fun baseUrlFor(username: String): String {
-        val normalized = username.trim()
-        val serverIndex = if (normalized.isNotEmpty() && normalized.all(Char::isDigit)) {
-            normalized.fold(0) { remainder, digit ->
-                (remainder * 10 + digit.digitToInt()) % baseUrls.size
-            }
-        } else {
-            0
-        }
-        return baseUrls[serverIndex]
+    fun baseUrl(store: SecretStore): String =
+        store.get(STORE_KEY)?.let(::normalize) ?: DEFAULT_BASE_URL
+
+    fun remember(store: SecretStore, candidate: String): String? = normalize(candidate)?.also {
+        store.put(STORE_KEY, it)
     }
+
+    private fun normalize(candidate: String): String? = runCatching {
+        val parsed = URL(candidate.trim())
+        val path = parsed.path.trimEnd('/')
+        if (parsed.protocol != "https" ||
+            !parsed.host.endsWith(".webvpn.ccit.edu.cn", ignoreCase = true) ||
+            !path.endsWith("/jsxsd", ignoreCase = true)
+        ) return@runCatching null
+        URL(parsed.protocol, parsed.host, parsed.port, "$path/").toString()
+    }.getOrNull()
+}
+
+internal fun JSONObject.findAcademicBaseUrl(): String? {
+    val groups = optJSONObject("data")?.optJSONArray("list") ?: return null
+    for (groupIndex in 0 until groups.length()) {
+        val sites = groups.optJSONObject(groupIndex)?.optJSONArray("sites") ?: continue
+        for (siteIndex in 0 until sites.length()) {
+            val site = sites.optJSONObject(siteIndex) ?: continue
+            val name = site.optString("name")
+            val url = site.optString("url")
+            if (name.contains("教务") && url.contains("/jsxsd", ignoreCase = true)) return url
+        }
+    }
+    return null
 }
 
 internal class AcademicProtocolClient(
@@ -51,14 +68,14 @@ internal class AcademicProtocolClient(
     baseUrl: String? = null,
 ) {
     private val automaticServerRouting = baseUrl == null
-    @Volatile private var baseUrl = (baseUrl ?: AcademicServerRouter.baseUrlFor("")).let {
+    @Volatile private var baseUrl = (baseUrl ?: AcademicServerRouter.baseUrl(store)).let {
         if (it.endsWith('/')) it else "$it/"
     }
     @Volatile private var timetableSchemeId: String? = null
 
-    fun routeForUsername(username: String): Boolean {
+    fun refreshServerRoute(): Boolean {
         if (!automaticServerRouting) return false
-        val next = AcademicServerRouter.baseUrlFor(username)
+        val next = AcademicServerRouter.baseUrl(store)
         if (next == baseUrl) return false
         baseUrl = next
         timetableSchemeId = null
@@ -453,7 +470,9 @@ internal class AcademicProtocolClient(
     }
 
     private fun isLoginPage(html: String): Boolean = html.contains("LoginToXk", true) ||
-        (html.contains("userAccount", true) && html.contains("RANDOMCODE", true))
+        html.contains("verifycode.servlet", true) ||
+        (html.contains("userAccount", true) && html.contains("RANDOMCODE", true)) ||
+        (html.contains("browser-compatibility", true) && html.contains("WebVPN", true))
 
     private fun safePath(path: String): String {
         val normalized = path.substringAfter("/jsxsd/", path).trimStart('/')

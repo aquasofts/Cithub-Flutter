@@ -1,22 +1,33 @@
 import Foundation
 
 public enum AcademicServerRouter {
-    private static let baseURLs = [
-        URL(string: "https://http-10-198-47-147-8080.webvpn.ccit.edu.cn/jsxsd/")!,
-        URL(string: "https://http-10-198-47-147-8081.webvpn.ccit.edu.cn/jsxsd/")!,
-        URL(string: "https://http-10-198-47-148-8080.webvpn.ccit.edu.cn/jsxsd/")!,
-        URL(string: "https://http-10-198-47-148-8081.webvpn.ccit.edu.cn/jsxsd/")!,
-    ]
+    public static let storeKey = "academic.base_url"
+    public static let defaultBaseURL =
+        URL(string: "https://http-10-198-47-148-8080.webvpn.ccit.edu.cn/jsxsd/")!
 
-    public static func baseURL(for username: String) -> URL {
-        let normalized = username.trimmingCharacters(in: .whitespacesAndNewlines)
-        let index: Int
-        if !normalized.isEmpty, normalized.allSatisfy(\.isNumber) {
-            index = normalized.reduce(0) { partial, character in
-                (partial * 10 + (character.wholeNumberValue ?? 0)) % baseURLs.count
-            }
-        } else { index = 0 }
-        return baseURLs[index]
+    public static func baseURL(from storedValue: String?) -> URL {
+        storedValue.flatMap(normalize) ?? defaultBaseURL
+    }
+
+    @discardableResult
+    public static func remember(_ candidate: String, using store: any SecretStore) async -> URL? {
+        guard let normalized = normalize(candidate) else { return nil }
+        await store.put(storeKey, normalized.absoluteString)
+        return normalized
+    }
+
+    private static func normalize(_ candidate: String) -> URL? {
+        guard var components = URLComponents(
+            string: candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+        ), components.scheme?.lowercased() == "https",
+           let host = components.host?.lowercased(), host.hasSuffix(".webvpn.ccit.edu.cn")
+        else { return nil }
+        let path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard path.split(separator: "/").last?.lowercased() == "jsxsd" else { return nil }
+        components.path = "/\(path)/"
+        components.query = nil
+        components.fragment = nil
+        return components.url
     }
 }
 
@@ -43,14 +54,14 @@ public actor AcademicProtocolClient {
         self.transport = transport
         self.cookies = CookieHeaderStore(store: store)
         self.automaticServerRouting = baseURL == nil
-        let selected = baseURL ?? AcademicServerRouter.baseURL(for: "")
+        let selected = baseURL ?? AcademicServerRouter.defaultBaseURL
         self.baseURL = selected.absoluteString.hasSuffix("/") ? selected : URL(string: selected.absoluteString + "/")!
     }
 
     @discardableResult
-    public func routeForUsername(_ username: String) -> Bool {
+    public func refreshServerRoute() async -> Bool {
         guard automaticServerRouting else { return false }
-        let next = AcademicServerRouter.baseURL(for: username)
+        let next = AcademicServerRouter.baseURL(from: await store.get(AcademicServerRouter.storeKey))
         guard next != baseURL else { return false }
         baseURL = next
         timetableSchemeID = nil
@@ -505,8 +516,11 @@ public actor AcademicProtocolClient {
 
     private func isLoginPage(_ html: String) -> Bool {
         html.range(of: "LoginToXk", options: .caseInsensitive) != nil ||
-            (html.range(of: "userAccount", options: .caseInsensitive) != nil &&
-             html.range(of: "RANDOMCODE", options: .caseInsensitive) != nil)
+        html.range(of: "verifycode.servlet", options: .caseInsensitive) != nil ||
+        (html.range(of: "userAccount", options: .caseInsensitive) != nil &&
+         html.range(of: "RANDOMCODE", options: .caseInsensitive) != nil) ||
+        (html.range(of: "browser-compatibility", options: .caseInsensitive) != nil &&
+         html.range(of: "WebVPN", options: .caseInsensitive) != nil)
     }
 
     private func safePath(_ path: String) throws -> String {

@@ -35,8 +35,8 @@ internal class AndroidAcademicApi(
     override fun initialize(webVpnUsername: String, callback: (Result<WebVpnSessionDto>) -> Unit) =
         runAsync(executor, mainHandler, callback) {
             check(state.webVpnSignedIn) { "请先登录 WebVPN" }
-            if (client.routeForUsername(webVpnUsername)) {
-                logs.append("academic", "Selected academic server for account $webVpnUsername")
+            if (client.refreshServerRoute()) {
+                logs.append("academic", "Updated academic server from the WebVPN site list")
             }
             val restored = client.initialize()
             if (restored != null) {
@@ -67,13 +67,7 @@ internal class AndroidAcademicApi(
             check(state.webVpnSignedIn) { "请先登录 WebVPN" }
             val username = request.username.trim()
             require(username.isNotBlank()) { "请输入教务系统账号" }
-            if (client.routeForUsername(username)) {
-                state.academicSignedIn = false
-                state.academicUsername = username
-                refreshCaptchaBlocking()
-                logs.append("academic", "Switched academic server for account $username")
-                return@runAsync session("账号对应的教务服务器已切换，请核对新验证码后重新登录")
-            }
+            client.refreshServerRoute()
             val password = if (request.useSavedPassword) {
                 state.secureStore.get("academic.password.$username")
                     ?: error("保存的教务密码不可用，请重新输入")
@@ -169,7 +163,7 @@ internal class AndroidAcademicApi(
         val password = state.secureStore.get("academic.password.$username")
         if (username.isBlank() || password.isNullOrBlank()) return false
         return runCatching {
-            client.routeForUsername(username)
+            client.refreshServerRoute()
             refreshCaptchaBlocking()
             val code = captcha?.recognizedCode.orEmpty()
             if (code.length != 4) return@runCatching false

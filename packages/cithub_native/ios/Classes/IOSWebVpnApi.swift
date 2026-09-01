@@ -37,6 +37,7 @@ final class IOSWebVpnApi: WebVpnHostApi {
         runNative(completion: completion) { [self] in
             if await client.hasRestorableSession(), let restored = try? await client.userInfo() {
                 activeUser = restored
+                await refreshAcademicRoute()
                 await state.setWebVPN(authenticated: true, username: restored.username)
                 await syncWebVPNCookies()
                 await logger.append(source: "webvpn", message: "Encrypted Cookie session restored")
@@ -84,6 +85,7 @@ final class IOSWebVpnApi: WebVpnHostApi {
                 configuration: config
             )
             activeUser = user
+            await refreshAcademicRoute()
             await state.setWebVPN(authenticated: true, username: username)
             if request.rememberPassword { await saveCredential(username: username, password: password) }
             await syncWebVPNCookies()
@@ -120,6 +122,7 @@ final class IOSWebVpnApi: WebVpnHostApi {
                 return await session(message: "会话已失效")
             }
             activeUser = restored
+            await refreshAcademicRoute()
             await state.setWebVPN(authenticated: true, username: restored.username)
             await syncWebVPNCookies()
             return await session(message: "会话有效")
@@ -145,6 +148,17 @@ final class IOSWebVpnApi: WebVpnHostApi {
         let loaded = try await client.loadConfiguration()
         configuration = loaded
         return loaded
+    }
+
+    private func refreshAcademicRoute() async {
+        do {
+            _ = try await client.refreshAcademicBaseURL()
+        } catch {
+            await logger.append(
+                source: "webvpn",
+                message: "Unable to refresh academic site address; using the verified fallback"
+            )
+        }
     }
 
     private func session(message: String?) async -> WebVpnSessionDto {

@@ -83,6 +83,11 @@ internal class WebVpnProtocolClient(
 
     fun userInfo(): WebVpnUser = parseUser(request("GET", "api/access/user/info").data())
 
+    fun refreshAcademicBaseUrl(): String? {
+        val candidate = request("GET", "api/access/nav/site-list").findAcademicBaseUrl() ?: return null
+        return AcademicServerRouter.remember(store, candidate)
+    }
+
     fun logout() {
         runCatching { request("POST", "api/access/user/logout", JSONObject()) }
         clearSession()

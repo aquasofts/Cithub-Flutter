@@ -20,8 +20,8 @@ final class IOSAcademicApi: AcademicHostApi {
             guard await state.webVPNAuthenticated else {
                 throw CithubNativeError.loginRequired("请先登录 WebVPN")
             }
-            if await client.routeForUsername(webVpnUsername) {
-                await logger.append(source: "academic", message: "Selected academic server for account \(webVpnUsername)")
+            if await client.refreshServerRoute() {
+                await logger.append(source: "academic", message: "Updated academic server from the WebVPN site list")
             }
             if let restored = try await client.initialize() {
                 terms = restored
@@ -53,12 +53,7 @@ final class IOSAcademicApi: AcademicHostApi {
             }
             let username = request.username.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !username.isEmpty else { throw CithubNativeError.invalidInput("请输入教务系统账号") }
-            if await client.routeForUsername(username) {
-                await state.setAcademic(authenticated: false, username: username)
-                try await refreshCaptchaValue()
-                await logger.append(source: "academic", message: "Switched academic server for account \(username)")
-                return await session(message: "账号对应的教务服务器已切换，请核对新验证码后重新登录")
-            }
+            _ = await client.refreshServerRoute()
             let password: String
             if request.useSavedPassword {
                 guard let saved = await store.get("academic.password.\(username)") else {
