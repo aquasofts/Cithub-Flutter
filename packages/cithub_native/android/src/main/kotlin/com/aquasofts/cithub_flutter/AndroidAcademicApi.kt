@@ -47,6 +47,9 @@ internal class AndroidAcademicApi(
                 session("已恢复教务系统会话")
             } else {
                 state.academicSignedIn = false
+                if (tryAutomaticLogin(webVpnUsername)) {
+                    return@runAsync session("已自动续登教务系统")
+                }
                 refreshCaptchaBlocking()
                 session("请登录教务系统")
             }
@@ -87,28 +90,29 @@ internal class AndroidAcademicApi(
 
     override fun loadTerms(callback: (Result<List<AcademicTermDto>>) -> Unit) =
         runAsync(executor, mainHandler, callback) {
-            requireSession()
-            if (terms.isEmpty()) terms = client.initialize() ?: throw AcademicLoginRequired("教务登录已过期")
+            withSessionRecovery {
+                if (terms.isEmpty()) terms = client.initialize() ?: throw AcademicLoginRequired("教务登录已过期")
+            }
             terms
         }
 
     override fun loadGrades(term: String, bestOnly: Boolean, callback: (Result<List<CourseGradeDto>>) -> Unit) =
-        runAsync(executor, mainHandler, callback) { requireSession(); client.loadGrades(term, bestOnly) }
+        runAsync(executor, mainHandler, callback) { withSessionRecovery { client.loadGrades(term, bestOnly) } }
 
     override fun loadTimetable(term: String?, callback: (Result<TimetableDto>) -> Unit) =
-        runAsync(executor, mainHandler, callback) { requireSession(); client.loadTimetable(term) }
+        runAsync(executor, mainHandler, callback) { withSessionRecovery { client.loadTimetable(term) } }
 
     override fun loadSelectionResults(term: String, callback: (Result<List<SelectedCourseDto>>) -> Unit) =
-        runAsync(executor, mainHandler, callback) { requireSession(); client.loadSelectionResults(term) }
+        runAsync(executor, mainHandler, callback) { withSessionRecovery { client.loadSelectionResults(term) } }
 
     override fun loadEvaluationBatches(callback: (Result<List<EvaluationBatchDto>>) -> Unit) =
-        runAsync(executor, mainHandler, callback) { requireSession(); client.loadEvaluationBatches() }
+        runAsync(executor, mainHandler, callback) { withSessionRecovery { client.loadEvaluationBatches() } }
 
     override fun loadEvaluationCourses(path: String, callback: (Result<List<EvaluationCourseDto>>) -> Unit) =
-        runAsync(executor, mainHandler, callback) { requireSession(); client.loadEvaluationCourses(path) }
+        runAsync(executor, mainHandler, callback) { withSessionRecovery { client.loadEvaluationCourses(path) } }
 
     override fun loadEvaluationForm(path: String, callback: (Result<EvaluationFormDto>) -> Unit) =
-        runAsync(executor, mainHandler, callback) { requireSession(); client.loadEvaluationForm(path) }
+        runAsync(executor, mainHandler, callback) { withSessionRecovery { client.loadEvaluationForm(path) } }
 
     override fun saveEvaluation(
         form: EvaluationFormDto,
@@ -117,15 +121,15 @@ internal class AndroidAcademicApi(
         submit: Boolean,
         callback: (Result<Boolean>) -> Unit,
     ) = runAsync(executor, mainHandler, callback) {
-        requireSession()
-        client.saveEvaluation(form, answers, suggestion, submit)
+        withSessionRecovery { client.saveEvaluation(form, answers, suggestion, submit) }
     }
 
     override fun prepareWebPage(path: String, callback: (Result<String>) -> Unit) =
         runAsync(executor, mainHandler, callback) {
-            requireSession()
-            syncWebViewCookies()
-            client.webPageUrl(path)
+            withSessionRecovery {
+                syncWebViewCookies()
+                client.webPageUrl(path)
+            }
         }
 
     override fun logout(callback: (Result<Boolean>) -> Unit) =
@@ -145,6 +149,40 @@ internal class AndroidAcademicApi(
             runCatching { captchaRecognizer.recognize(image) }.getOrDefault("")
         } else ""
         captcha = CaptchaDto("academic-${System.currentTimeMillis()}", image, recognized)
+    }
+
+    private fun <T> withSessionRecovery(action: () -> T): T {
+        requireSession()
+        return try {
+            action()
+        } catch (error: AcademicLoginRequired) {
+            state.academicSignedIn = false
+            if (!tryAutomaticLogin(state.academicUsername.orEmpty())) throw error
+            action()
+        }
+    }
+
+    private fun tryAutomaticLogin(preferredUsername: String): Boolean {
+        if (!BuildConfig.CAPTCHA_AUTOFILL_ENABLED) return false
+        val username = state.secureStore.get("academic.last_username")
+            ?.takeIf(String::isNotBlank) ?: preferredUsername.trim()
+        val password = state.secureStore.get("academic.password.$username")
+        if (username.isBlank() || password.isNullOrBlank()) return false
+        return runCatching {
+            client.routeForUsername(username)
+            refreshCaptchaBlocking()
+            val code = captcha?.recognizedCode.orEmpty()
+            if (code.length != 4) return@runCatching false
+            terms = client.login(username, password, code)
+            state.academicSignedIn = true
+            state.academicUsername = username
+            syncWebViewCookies()
+            logs.append("academic", "Academic session automatically renewed")
+            true
+        }.getOrElse {
+            state.academicSignedIn = false
+            false
+        }
     }
 
     private fun saveCredential(username: String, password: String) {

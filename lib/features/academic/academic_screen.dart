@@ -1438,27 +1438,83 @@ class _EvaluationFormScreenState extends ConsumerState<EvaluationFormScreen> {
   );
 }
 
-class TimetableScreen extends ConsumerWidget {
+class TimetableScreen extends ConsumerStatefulWidget {
   const TimetableScreen({super.key});
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Scaffold(
-    appBar: AppBar(title: const Text('我的课表')),
+  ConsumerState<TimetableScreen> createState() => _TimetableScreenState();
+}
+
+class _TimetableScreenState extends ConsumerState<TimetableScreen> {
+  late Future<TimetableDto> _timetable;
+
+  @override
+  void initState() {
+    super.initState();
+    _timetable = ref.read(cithubPlatformProvider).loadTimetable();
+  }
+
+  void _reload() => setState(() {
+    _timetable = ref.read(cithubPlatformProvider).loadTimetable();
+  });
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: const Text('今日课表'),
+      actions: [IconButton(onPressed: _reload, icon: const Icon(Icons.refresh))],
+    ),
     body: FutureBuilder<TimetableDto>(
-      future: ref.read(cithubPlatformProvider).loadTimetable(),
-      builder: (_, snapshot) {
+      future: _timetable,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(
+            child: FilledButton.icon(
+              onPressed: _reload,
+              icon: const Icon(Icons.refresh),
+              label: const Text('加载失败，重试'),
+            ),
+          );
+        }
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
         final data = snapshot.requireData;
+        final date = DateTime.tryParse(data.referenceDateIso ?? '');
+        final weekday = date?.weekday ?? DateTime.now().weekday;
+        final courses = data.courses.where((course) {
+          final activeThisWeek = data.referenceWeek == null ||
+              course.weekNumbers.isEmpty ||
+              course.weekNumbers.contains(data.referenceWeek);
+          return course.dayOfWeek == weekday && activeThisWeek;
+        }).toList()
+          ..sort((a, b) => a.startSection.compareTo(b.startSection));
+        final weekLabel = data.referenceWeek == null
+            ? '按首页日期加载'
+            : '第 ${data.referenceWeek} 周${data.totalWeeks == null ? '' : ' / ${data.totalWeeks} 周'}';
+        if (courses.isEmpty) {
+          return Center(
+            child: Text(
+              '$weekLabel\n今天没有课程',
+              textAlign: TextAlign.center,
+            ),
+          );
+        }
         return ListView.separated(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-          itemCount: data.courses.length,
+          itemCount: courses.length + 1,
           separatorBuilder: (_, _) => const SizedBox(height: 10),
           itemBuilder: (_, index) {
-            final item = data.courses[index];
+            if (index == 0) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Text(weekLabel, style: Theme.of(context).textTheme.titleSmall),
+              );
+            }
+            final item = courses[index - 1];
             return Card(
               child: ListTile(
-                leading: CircleAvatar(child: Text('周${item.dayOfWeek}')),
+                leading: CircleAvatar(child: Text('${item.startSection}-${item.endSection}')),
                 title: Text(item.name),
                 subtitle: Text(
                   '${item.weeks}\n${item.teacher} · ${item.location}',

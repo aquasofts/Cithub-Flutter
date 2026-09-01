@@ -12,6 +12,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import java.time.LocalDate
 
 @RunWith(RobolectricTestRunner::class)
 class ProtocolMockServerTest {
@@ -117,6 +118,38 @@ class ProtocolMockServerTest {
             "https://http-10-198-47-148-8081.webvpn.ccit.edu.cn/jsxsd/",
             AcademicServerRouter.baseUrlFor("2505422547"),
         )
+    }
+
+    @Test
+    fun academicUsesHomeDateWeekAndVisibleKbcontent1ForTodaysTimetable() {
+        val weekday = "一二三四五六日"[LocalDate.now().dayOfWeek.value - 1]
+        server.enqueue(html("""
+            <select name="xnxq01id"><option value="2026-2027-1" selected>2026-2027 学年第一学期</option></select>
+            <select name="kbjcmsid"><option value="scheme-1" selected>学生课表</option></select>
+            <table id="kbtable"><tr><th>周/节次</th></tr><tr><td>第一大节 (01,02小节) 08:00-09:35</td>
+              <td><div class="kbcontent1">全量课表课程<br/><font title="周次(节次)">1-16周[01-02节]</font><br/><font title="老师">张老师</font><br/><font title="教室">A101</font></div></td>
+            </tr></table>
+        """))
+        server.enqueue(html("""
+            <div>第 2 周/20 周</div>
+            <table class="kb_table"><thead><tr><th>周/节次</th><th>星期$weekday</th></tr></thead><tbody><tr>
+              <td>第一大节 (01,02小节) 08:00-09:35</td>
+              <td><div class="kbcontent1">首页课程<br/><font title="周次(节次)">1-16周[01-02节]</font><br/><font title="老师">李老师</font><br/><font title="教室">B202</font></div></td>
+            </tr></tbody></table>
+        """))
+        val client = AcademicProtocolClient(store, logs, server.url("/jsxsd/").toString())
+
+        val timetable = client.loadTimetable(null)
+
+        assertEquals(LocalDate.now().toString(), timetable.referenceDateIso)
+        assertEquals(2L, timetable.referenceWeek)
+        assertEquals(20L, timetable.totalWeeks)
+        assertEquals("首页课程", timetable.courses.single().name)
+        assertEquals("1-2", "${timetable.courses.single().startSection}-${timetable.courses.single().endSection}")
+        server.takeRequest()
+        val homeRequest = server.takeRequest()
+        assertTrue(homeRequest.path!!.contains("framework/main_index_loadkb.jsp"))
+        assertTrue(homeRequest.body.readUtf8().contains("sjmsValue=scheme-1"))
     }
 
     private fun json(body: String) = MockResponse().setHeader("Content-Type", "application/json").setBody(body)

@@ -268,20 +268,33 @@ public actor AcademicProtocolClient {
             parsed = try parseTimetable(html)
         }
         let today = Self.dateFormatter.string(from: Date())
-        var referenceWeek: Int64?
-        var totalWeeks: Int64?
-        if let weekHTML = try? await post(
+        let weekday = Calendar(identifier: .gregorian).component(.weekday, from: Date())
+        let dayOfWeek = weekday == 1 ? 7 : weekday - 1
+        let homeTimetable: ((Int64, Int64)?, [CoreTimetableCourse])?
+        do {
+            let weekHTML = try await post(
             "framework/main_index_loadkb.jsp",
             form: ["rq": today, "sjmsValue": parsed.schemeID],
             message: "加载教学周失败"
-        ), let match = HTMLParser.captures(
-            pattern: #"第\s*(\d+)\s*周.*?/(\d+)\s*周"#, in: weekHTML,
-            options: [.dotMatchesLineSeparators]
-        ).first {
-            referenceWeek = Int64(match[safe: 1] ?? "")
-            totalWeeks = Int64(match[safe: 2] ?? "")
+            )
+            try requireSession(weekHTML)
+            homeTimetable = (parseTeachingWeek(weekHTML), parseHomeTimetable(weekHTML, day: Int64(dayOfWeek)))
+        } catch {
+            // The full timetable below is a reliable fallback when the home
+            // panel is temporarily unavailable, but do not hide an expired
+            // login as an empty timetable.
+            if let nativeError = error as? CithubNativeError,
+               case .loginRequired = nativeError { throw nativeError }
+            homeTimetable = nil
+        }
+        let referenceWeek = homeTimetable?.0?.0
+        let totalWeeks = homeTimetable?.0?.1
+        let expectedTodayCourses = parsed.dto.courses.filter { course in
+            course.dayOfWeek == Int64(dayOfWeek) &&
+                (referenceWeek == nil || course.weekNumbers.isEmpty || course.weekNumbers.contains(referenceWeek!))
         }
         var result = parsed.dto
+        result.courses = homeTimetable?.1.isEmpty == false ? homeTimetable!.1 : expectedTodayCourses
         result.referenceDateISO = today
         result.referenceWeek = referenceWeek
         result.totalWeeks = totalWeeks
@@ -331,9 +344,15 @@ public actor AcademicProtocolClient {
         }
         let terms = HTMLParser.options(in: html, selectName: "xnxq01id")
         let selected = terms.first(where: \.selected)?.value ?? terms.first?.value ?? ""
-        let scheme = HTMLParser.voidElements("input", in: html).first(where: {
-            $0.attribute("name") == "kbjcmsid"
-        })?.attribute("value") ?? ""
+        let schemeSelect = HTMLParser.elements("select", in: html).first(where: {
+            $0.attribute("name").caseInsensitiveCompare("kbjcmsid") == .orderedSame
+        })
+        let schemeOptions = schemeSelect.map { HTMLParser.elements("option", in: $0.innerHTML) } ?? []
+        let scheme = schemeOptions.first(where: { $0.hasAttribute("selected") })?.attribute("value")
+            ?? schemeOptions.first?.attribute("value")
+            ?? HTMLParser.voidElements("input", in: html).first(where: {
+                $0.attribute("name") == "kbjcmsid"
+            })?.attribute("value") ?? ""
         return ParsedTimetable(
             dto: CoreTimetable(
                 terms: terms, selectedTerm: selected, periods: periods, courses: courses,
@@ -344,42 +363,75 @@ public actor AcademicProtocolClient {
     }
 
     private func parseTimetableCell(_ cell: HTMLNode, day: Int64, period: Int64) -> [CoreTimetableCourse] {
-        guard let content = HTMLParser.elements("div", in: cell.innerHTML).first(where: {
-            $0.attribute("class").split(separator: " ").contains("kbcontent") && !$0.text.isEmpty
-        }) else { return [] }
-        let normalized = content.innerHTML.replacingOccurrences(
-            of: #"(?:<br\s*/?>\s*)?-{5,}(?:\s*<br\s*/?>)?"#,
-            with: "\u{1f}", options: [.regularExpression, .caseInsensitive]
-        )
-        return normalized.split(separator: "\u{1f}").compactMap { raw -> CoreTimetableCourse? in
-            let markup = String(raw)
-            var details: [String: String] = [:]
-            for font in HTMLParser.elements("font", in: markup) where !font.attribute("title").isEmpty {
-                details[font.attribute("title")] = font.text
-            }
-            var nameHTML = markup
-            nameHTML = nameHTML.replacingOccurrences(
-                of: #"<font\b[^>]*title\s*=.*?</font\s*>"#,
-                with: "", options: [.regularExpression, .caseInsensitive]
-            )
-            let name = HTMLParser.text(nameHTML).replacingOccurrences(of: #"P$"#, with: "", options: .regularExpression)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !name.isEmpty else { return nil }
-            let weeksAndSections = details["周次(节次)"] ?? ""
-            let sections = HTMLParser.captures(pattern: #"\[(\d{1,2})-(\d{1,2})节]"#, in: weeksAndSections).first
-            let start = Int64(sections?[safe: 1] ?? "") ?? period * 2 - 1
-            let end = Int64(sections?[safe: 2] ?? "") ?? period * 2
-            let weeks = weeksAndSections.replacingOccurrences(
-                of: #"\[\d{1,2}-\d{1,2}节]"#, with: "", options: .regularExpression
-            ).trimmingCharacters(in: .whitespacesAndNewlines)
-            let location = details["教室"] ?? ""
-            return CoreTimetableCourse(
-                id: "\(day)-\(period)-\(name)-\(weeks)-\(location)",
-                dayOfWeek: day, periodIndex: period, startSection: start, endSection: end,
-                name: name, teacher: details["老师"] ?? "", weeks: weeks,
-                weekNumbers: parseWeeks(weeks), location: location
-            )
+        let contents = HTMLParser.elements("div", in: cell.innerHTML).filter {
+            $0.attribute("class").split(separator: " ").contains(where: { $0.hasPrefix("kbcontent") }) && !$0.text.isEmpty
         }
+        return contents.flatMap { content in
+            content.innerHTML.replacingOccurrences(
+                of: #"(?:<br\s*/?>\s*)?-{5,}(?:\s*<br\s*/?>)?"#,
+                with: "\u{1f}", options: [.regularExpression, .caseInsensitive]
+            ).split(separator: "\u{1f}").compactMap { parseCourseMarkup(String($0), day: day, period: period) }
+        }.reduce(into: [String: CoreTimetableCourse]()) { result, course in
+            let key = "\(course.name)|\(course.weeks)|\(course.location)|\(course.startSection)|\(course.endSection)"
+            guard let existing = result[key] else {
+                result[key] = course
+                return
+            }
+            let existingDetailCount = (existing.teacher.isEmpty ? 0 : 1) + (existing.location.isEmpty ? 0 : 1)
+            let newDetailCount = (course.teacher.isEmpty ? 0 : 1) + (course.location.isEmpty ? 0 : 1)
+            if newDetailCount > existingDetailCount { result[key] = course }
+        }.values.sorted { $0.id < $1.id }
+    }
+
+    private func parseHomeTimetable(_ html: String, day: Int64) -> [CoreTimetableCourse] {
+        guard let table = HTMLParser.elements("table", in: html).first(where: {
+            $0.attribute("class").split(separator: " ").contains("kb_table")
+        }) else { return [] }
+        let rows = HTMLParser.elements("tr", in: table.innerHTML)
+        guard let header = rows.first else { return [] }
+        let cells = HTMLParser.rowCells(header)
+        let weekday = ["一", "二", "三", "四", "五", "六", "日"][safe: Int(day - 1)] ?? ""
+        guard let column = cells.firstIndex(where: { $0.text.contains("星期\(weekday)") }), column > 0 else { return [] }
+        return rows.dropFirst().enumerated().flatMap { offset, row in
+            HTMLParser.rowCells(row)[safe: column].map { parseTimetableCell($0, day: day, period: Int64(offset + 1)) } ?? []
+        }
+    }
+
+    private func parseCourseMarkup(_ markup: String, day: Int64, period: Int64) -> CoreTimetableCourse? {
+        var details: [String: String] = [:]
+        for font in HTMLParser.elements("font", in: markup) where !font.attribute("title").isEmpty {
+            details[font.attribute("title")] = font.text
+        }
+        let nameHTML = markup.replacingOccurrences(
+            of: #"<font\b[^>]*title\s*=.*?</font\s*>"#,
+            with: "", options: [.regularExpression, .caseInsensitive]
+        )
+        let name = HTMLParser.text(nameHTML).replacingOccurrences(of: #"P$"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return nil }
+        let weeksAndSections = details["周次(节次)"] ?? ""
+        let sections = HTMLParser.captures(pattern: #"(?:\[|（)(\d{1,2})\s*[-~,，]\s*(\d{1,2})(?:节|小节)?(?:\]|）)"#, in: weeksAndSections).first
+        let start = Int64(sections?[safe: 1] ?? "") ?? period * 2 - 1
+        let end = Int64(sections?[safe: 2] ?? "") ?? period * 2
+        let weeks = weeksAndSections.replacingOccurrences(
+            of: #"(?:\[|（)\d{1,2}\s*[-~,，]\s*\d{1,2}(?:节|小节)?(?:\]|）)"#, with: "", options: .regularExpression
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        let location = details["教室"] ?? ""
+        return CoreTimetableCourse(
+            id: "\(day)-\(period)-\(name)-\(weeks)-\(location)",
+            dayOfWeek: day, periodIndex: period, startSection: start, endSection: end,
+            name: name, teacher: details["老师"] ?? "", weeks: weeks,
+            weekNumbers: parseWeeks(weeks), location: location
+        )
+    }
+
+    private func parseTeachingWeek(_ html: String) -> (Int64, Int64)? {
+        let match = HTMLParser.captures(
+            pattern: #"第\s*(\d+)\s*周.*?/(\d+)\s*周"#, in: html,
+            options: [.dotMatchesLineSeparators]
+        ).first
+        guard let match, let week = Int64(match[safe: 1] ?? ""), let total = Int64(match[safe: 2] ?? "") else { return nil }
+        return (week, total)
     }
 
     private func parseWeeks(_ source: String) -> [Int64] {

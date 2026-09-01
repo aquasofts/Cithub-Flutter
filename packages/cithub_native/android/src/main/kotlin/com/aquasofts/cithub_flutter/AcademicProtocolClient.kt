@@ -239,16 +239,33 @@ internal class AcademicProtocolClient(
             ), "加载理论课表失败")
             parsed = parseTimetable(html)
         }
-        val teachingWeek = runCatching {
+        // The student home page is the authoritative source for the calendar
+        // date, weekday, and teaching week.  The full timetable page is kept as
+        // a fallback because the home page can legitimately have no classes.
+        val today = LocalDate.now()
+        val homeTimetable = runCatching {
             val weekHtml = post("framework/main_index_loadkb.jsp", mapOf(
-                "rq" to LocalDate.now().toString(), "sjmsValue" to parsed.schemeId,
+                "rq" to today.toString(), "sjmsValue" to parsed.schemeId,
             ), "加载教学周失败")
-            Regex("第\\s*(\\d+)\\s*周.*?/(\\d+)\\s*周", RegexOption.DOT_MATCHES_ALL)
-                .find(weekHtml)?.let { it.groupValues[1].toLong() to it.groupValues[2].toLong() }
-        }.getOrNull()
+            requireSession(weekHtml)
+            val week = parseTeachingWeek(weekHtml)
+            val courses = parseHomeTimetable(weekHtml, today.dayOfWeek.value)
+            week to courses
+        }.getOrElse { error ->
+            if (error is AcademicLoginRequired) throw error
+            null
+        }
+        val teachingWeek = homeTimetable?.first
+        val homeCourses = homeTimetable?.second.orEmpty()
+        val expectedTodayCourses = parsed.dto.courses.filter { course ->
+            course.dayOfWeek == today.dayOfWeek.value.toLong() &&
+                (teachingWeek?.first == null ||
+                    course.weekNumbers.isEmpty() || course.weekNumbers.contains(teachingWeek.first))
+        }
         return TimetableDto(
-            parsed.dto.terms, parsed.dto.selectedTerm, parsed.dto.periods, parsed.dto.courses,
-            parsed.dto.note, LocalDate.now().toString(), teachingWeek?.first, teachingWeek?.second,
+            parsed.dto.terms, parsed.dto.selectedTerm, parsed.dto.periods,
+            homeCourses.ifEmpty { expectedTodayCourses }, parsed.dto.note,
+            today.toString(), teachingWeek?.first, teachingWeek?.second,
         )
     }
 
@@ -289,30 +306,70 @@ internal class AcademicProtocolClient(
         }
         val terms = parseTerms(document, "xnxq01id")
         val selected = terms.firstOrNull { it.selected }?.value ?: terms.firstOrNull()?.value.orEmpty()
-        val scheme = document.selectFirst("input[name=kbjcmsid]")?.attr("value").orEmpty()
+        val scheme = document.selectFirst("select[name=kbjcmsid] option[selected]")?.attr("value")
+            ?.ifBlank { null }
+            ?: document.selectFirst("select[name=kbjcmsid] option")?.attr("value")
+            ?.ifBlank { null }
+            ?: document.selectFirst("input[name=kbjcmsid]")?.attr("value").orEmpty()
         return ParsedTimetable(TimetableDto(terms, selected, periods, courses, "", null, null, null), scheme)
     }
 
     private fun parseTimetableCell(cell: Element, day: Long, period: Long): List<TimetableCourseDto> {
-        val content = cell.select("div.kbcontent").firstOrNull { it.text().isNotBlank() } ?: return emptyList()
-        return content.html().split(Regex("(?:<br\\s*/?>\\s*)?-{5,}(?:\\s*<br\\s*/?>)?", RegexOption.IGNORE_CASE))
-            .mapNotNull { markup ->
-                val block = Jsoup.parseBodyFragment(markup).body()
-                val details = block.select("font[title]").associate { it.attr("title") to it.text() }
-                val clone = block.clone().also { it.select("font[title]").remove() }
-                val name = clone.text().removeSuffix("P").trim()
-                if (name.isBlank()) return@mapNotNull null
-                val weeksAndSections = details["周次(节次)"].orEmpty()
-                val section = Regex("\\[(\\d{1,2})-(\\d{1,2})节]").find(weeksAndSections)
-                val start = section?.groupValues?.get(1)?.toLongOrNull() ?: period * 2 - 1
-                val end = section?.groupValues?.get(2)?.toLongOrNull() ?: period * 2
-                val weeks = weeksAndSections.replace(Regex("\\[\\d{1,2}-\\d{1,2}节]"), "").trim()
-                TimetableCourseDto(
-                    "$day-$period-$name-$weeks-${details["教室"].orEmpty()}", day, period, start, end,
-                    name, details["老师"].orEmpty(), weeks, parseWeeks(weeks), details["教室"].orEmpty(),
-                )
+        // This system uses both kbcontent and kbcontent1.  The latter is the
+        // visible class in the captured production response.
+        return cell.select("div[class*=kbcontent]")
+            .flatMap { content ->
+                content.html().split(
+                    Regex("(?:<br\\s*/?>\\s*)?-{5,}(?:\\s*<br\\s*/?>)?", RegexOption.IGNORE_CASE),
+                ).mapNotNull { parseCourseMarkup(it, day, period) }
+            }
+            .groupBy { "${it.name}|${it.weeks}|${it.location}|${it.startSection}|${it.endSection}" }
+            .values
+            .map { alternatives ->
+                alternatives.maxBy { course ->
+                    (if (course.teacher.isBlank()) 0 else 1) +
+                        (if (course.location.isBlank()) 0 else 1)
+                }
             }
     }
+
+    private fun parseHomeTimetable(html: String, dayOfWeek: Int): List<TimetableCourseDto> {
+        val table = Jsoup.parse(html).selectFirst("table.kb_table") ?: return emptyList()
+        val headers = table.select("thead th").map(Element::text)
+        val column = headers.indexOfFirst { it.contains("星期${weekdayName(dayOfWeek)}") }
+        if (column < 1) return emptyList()
+        return table.select("tbody tr").flatMapIndexed { index, row ->
+            val cells = row.select(":scope > th, :scope > td")
+            val period = index + 1L
+            cells.getOrNull(column)?.let { parseTimetableCell(it, dayOfWeek.toLong(), period) }.orEmpty()
+        }
+    }
+
+    private fun parseCourseMarkup(markup: String, day: Long, period: Long): TimetableCourseDto? {
+        val block = Jsoup.parseBodyFragment(markup).body()
+        val details = block.select("font[title]").associate { it.attr("title") to it.text() }
+        val clone = block.clone().also { it.select("font[title]").remove() }
+        val name = clone.text().removeSuffix("P").trim()
+        if (name.isBlank()) return null
+        val weeksAndSections = details["周次(节次)"].orEmpty()
+        val section = Regex("(?:\\[|（)(\\d{1,2})\\s*[-~,，]\\s*(\\d{1,2})(?:节|小节)?(?:\\]|）)").find(weeksAndSections)
+        val start = section?.groupValues?.get(1)?.toLongOrNull() ?: period * 2 - 1
+        val end = section?.groupValues?.get(2)?.toLongOrNull() ?: period * 2
+        val weeks = weeksAndSections.replace(
+            Regex("(?:\\[|（)\\d{1,2}\\s*[-~,，]\\s*\\d{1,2}(?:节|小节)?(?:\\]|）)"), "",
+        ).trim()
+        val location = details["教室"].orEmpty()
+        return TimetableCourseDto(
+            "$day-$period-$name-$weeks-$location", day, period, start, end,
+            name, details["老师"].orEmpty(), weeks, parseWeeks(weeks), location,
+        )
+    }
+
+    private fun parseTeachingWeek(html: String): Pair<Long, Long>? =
+        Regex("第\\s*(\\d+)\\s*周.*?/(\\d+)\\s*周", RegexOption.DOT_MATCHES_ALL)
+            .find(html)?.let { it.groupValues[1].toLong() to it.groupValues[2].toLong() }
+
+    private fun weekdayName(dayOfWeek: Int): String = "一二三四五六日".getOrNull(dayOfWeek - 1)?.toString().orEmpty()
 
     private fun parseWeeks(source: String): List<Long> {
         val rangeText = source.substringBefore("(周").substringBefore("（周")
