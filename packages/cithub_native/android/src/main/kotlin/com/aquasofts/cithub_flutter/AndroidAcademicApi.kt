@@ -128,7 +128,9 @@ internal class AndroidAcademicApi(
 
     override fun logout(callback: (Result<Boolean>) -> Unit) =
         runAsync(executor, mainHandler, callback) {
+            val academicOrigin = client.webOrigin()
             client.logout()
+            clearAcademicWebViewCookie(academicOrigin)
             state.academicSignedIn = false
             state.academicUsername = null
             terms = emptyList()
@@ -223,6 +225,14 @@ internal class AndroidAcademicApi(
             manager.setCookie("https://webvpn.ccit.edu.cn/", "$cookie; Path=/; Secure")
             manager.setCookie(origin, "$cookie; Path=/; Secure")
         }
+        manager.flush()
+    }
+
+    private fun clearAcademicWebViewCookie(academicOrigin: String) {
+        val manager = CookieManager.getInstance()
+        val value = "JSESSIONID=; Path=/; Max-Age=0; Secure"
+        manager.setCookie("https://webvpn.ccit.edu.cn/", value)
+        manager.setCookie(academicOrigin, value)
         manager.flush()
     }
 }

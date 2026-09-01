@@ -220,7 +220,7 @@ public actor CookieHeaderStore {
             // safe here because only the first name=value pair of each cookie is used.
             for raw in rawHeader.split(separator: ",") {
                 let pair = raw.split(separator: ";", maxSplits: 1).first.map(String.init) ?? ""
-                let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
+                let parts = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
                 guard parts.count == 2 else { continue }
                 let name = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
                 let value = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)

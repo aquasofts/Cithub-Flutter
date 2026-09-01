@@ -91,6 +91,8 @@ public actor AcademicProtocolClient {
     }
 
     public func login(username: String, password: String, captchaCode: String) async throws -> [CoreAcademicTerm] {
+        let username = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        let captchaCode = captchaCode.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !username.isEmpty else { throw CithubNativeError.invalidInput("请输入教务系统账号") }
         guard !password.isEmpty else { throw CithubNativeError.invalidInput("请输入教务系统密码") }
         guard !captchaCode.isEmpty else { throw CithubNativeError.invalidInput("请输入教务系统验证码") }
@@ -105,9 +107,10 @@ public actor AcademicProtocolClient {
             ],
             followRedirects: false
         )
-        let location = response.header("Location") ?? response.finalURL?.absoluteString ?? ""
+        let location = (response.header("Location") ?? response.finalURL?.absoluteString ?? "")
+            .components(separatedBy: "?").first?.trimmingCharacters(in: CharacterSet(charactersIn: "/")) ?? ""
         let successful = (300...399).contains(response.status) &&
-            location.range(of: "/jsxsd/framework/xsMain.jsp", options: .caseInsensitive) != nil
+            location.range(of: "framework/xsMain.jsp", options: .caseInsensitive) != nil
         guard successful else {
             let alert = HTMLParser.firstCapture(
                 #"alert\s*\(\s*['\"]([^'\"]+)['\"]"#,

@@ -156,7 +156,14 @@ final class IOSAcademicApi: AcademicHostApi {
 
     func logout(completion: @escaping (Result<Bool, Error>) -> Void) {
         runNative(completion: completion) { [self] in
+            let origin = await client.webOrigin()
             await client.logout()
+            var cookieDomains = ["webvpn.ccit.edu.cn"]
+            if let host = URL(string: origin)?.host { cookieDomains.append(host) }
+            await deleteCookies(
+                names: ["JSESSIONID"],
+                domains: cookieDomains
+            )
             await state.setAcademic(authenticated: false, username: nil)
             terms = []
             captcha = nil

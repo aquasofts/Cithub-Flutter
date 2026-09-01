@@ -115,8 +115,12 @@ internal class AcademicProtocolClient(
             ),
             followRedirects = false,
         )
+        val location = response.location.orEmpty().substringBefore('?').trimEnd('/')
+        // Tomcat may return an absolute URL, /jsxsd/... or a path relative to
+        // the current /jsxsd/ context.  All three are the same successful
+        // login redirect.
         val successful = response.status in 300..399 &&
-            response.location?.contains("/jsxsd/framework/xsMain.jsp", ignoreCase = true) == true
+            location.endsWith("framework/xsMain.jsp", ignoreCase = true)
         if (!successful) {
             val document = Jsoup.parse(response.text)
             val alert = Regex("alert\\s*\\(\\s*['\"]([^'\"]+)['\"]").find(response.text)?.groupValues?.get(1)
@@ -461,8 +465,14 @@ internal class AcademicProtocolClient(
         headers.forEach { raw ->
             val pair = raw.substringBefore(';').trim()
             if (pair.contains('=')) cookies[pair.substringBefore('=')] = pair.substringAfter('=')
+            if (raw.contains("Max-Age=0", ignoreCase = true) ||
+                raw.contains("expires=Thu, 01 Jan 1970", ignoreCase = true)
+            ) {
+                cookies.remove(pair.substringBefore('='))
+            }
         }
-        store.put(COOKIE_KEY, cookies.entries.joinToString("; ") { "${it.key}=${it.value}" })
+        val value = cookies.entries.joinToString("; ") { "${it.key}=${it.value}" }
+        if (value.isBlank()) store.remove(COOKIE_KEY) else store.put(COOKIE_KEY, value)
     }
 
     private fun requireSession(html: String) {

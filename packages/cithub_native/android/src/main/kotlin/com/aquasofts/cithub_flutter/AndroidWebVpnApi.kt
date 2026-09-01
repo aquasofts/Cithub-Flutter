@@ -118,8 +118,10 @@ internal class AndroidWebVpnApi(
     override fun logout(callback: (Result<WebVpnSessionDto>) -> Unit) =
         runAsync(executor, mainHandler, callback) {
             val cookies = client.cookies()
+            val academicOrigin = runCatching { AcademicServerRouter.baseUrl(state.secureStore) }
+                .getOrDefault("https://webvpn.ccit.edu.cn/")
             client.logout()
-            clearWebViewCookies(cookies)
+            clearWebViewCookies(cookies, academicOrigin)
             clearActiveSession()
             events.emit("webvpn", "signedOut", "已退出 WebVPN")
             signedOutSession("已退出")
@@ -234,12 +236,16 @@ internal class AndroidWebVpnApi(
         manager.flush()
     }
 
-    private fun clearWebViewCookies(cookieHeader: String) {
+    private fun clearWebViewCookies(cookieHeader: String, academicOrigin: String) {
         val manager = CookieManager.getInstance()
         cookieHeader.split(';').map(String::trim).filter { it.contains('=') }.forEach { cookie ->
             val name = cookie.substringBefore('=')
             manager.setCookie(
                 "https://webvpn.ccit.edu.cn/",
+                "$name=; Path=/; Max-Age=0; Secure",
+            )
+            manager.setCookie(
+                academicOrigin,
                 "$name=; Path=/; Max-Age=0; Secure",
             )
         }

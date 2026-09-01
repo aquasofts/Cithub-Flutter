@@ -105,6 +105,34 @@ struct CithubNativeCoreTests {
         #expect(try await client.initialize() == nil)
     }
 
+    @Test("Academic login accepts relative redirects and trims form input")
+    func academicLoginRedirectVariants() async throws {
+        let transport = QueueHTTPTransport([
+            .html("", status: 302, headers: ["Location": "framework/xsMain.jsp?open=true"]),
+            .html(#"<select name="kksj"><option value="2025-2026-2" selected>2025-2026 学年第二学期</option></select>"#),
+        ])
+        let client = AcademicProtocolClient(
+            store: MemorySecretStore(),
+            logger: NullRuntimeLogger(),
+            baseURL: URL(string: "https://academic.test/jsxsd/")!,
+            transport: transport
+        )
+
+        let terms = try await client.login(username: " 20260001 ", password: "secret", captchaCode: " 1234 ")
+
+        #expect(terms.only?.value == "2025-2026-2")
+        let calls = await transport.recordedCalls
+        #expect(calls[0].body.range(of: Data("RANDOMCODE=1234".utf8)) != nil)
+    }
+
+    @Test("Cookie deletion removes expired academic sessions")
+    func expiredAcademicCookieIsRemoved() async {
+        let store = MemorySecretStore(values: ["webvpn.session.cookies": "SESSION=abc; JSESSIONID=xyz"])
+        let cookies = CookieHeaderStore(store: store)
+        await cookies.merge(["JSESSIONID=; Max-Age=0; Path=/jsxsd; Secure"])
+        #expect(await cookies.header() == "SESSION=abc")
+    }
+
     @Test("Tieba native forum request is protobuf and maps a pinned response")
     func tiebaNativeForumRoundTrip() async throws {
         let fixture = TiebaFixture.forumResponse(

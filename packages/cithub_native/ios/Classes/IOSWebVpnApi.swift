@@ -134,9 +134,15 @@ final class IOSWebVpnApi: WebVpnHostApi {
             let header = await client.cookieHeader()
             await client.logout()
             await clearActiveSession()
+            var cookieDomains = ["webvpn.ccit.edu.cn"]
+            if let host = AcademicServerRouter.baseURL(
+                from: await store.get(AcademicServerRouter.storeKey)
+            ).host {
+                cookieDomains.append(host)
+            }
             await deleteCookies(
                 names: Set(CookieHeaderStore.parse(header).keys),
-                domains: ["webvpn.ccit.edu.cn"]
+                domains: cookieDomains
             )
             await events.emit(source: "webvpn", stage: "signedOut", message: "已退出 WebVPN")
             return await session(message: "已退出")

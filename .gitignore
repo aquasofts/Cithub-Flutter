@@ -57,3 +57,5 @@ app.*.map.json
 /artifacts/
 /.ci/
 /android/key.properties
+/need/dist/
+need/dist/
