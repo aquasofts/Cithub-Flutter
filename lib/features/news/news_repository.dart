@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../../core/logging/runtime_log.dart';
+
 import 'package:html/parser.dart' as html_parser;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -56,7 +58,8 @@ class NewsArticle {
 }
 
 class NewsRepository {
-  NewsRepository({http.Client? client}) : _client = client ?? http.Client();
+  NewsRepository({http.Client? client})
+    : _client = client ?? LoggingHttpClient(http.Client());
   final http.Client _client;
 
   static const defaultSources = {

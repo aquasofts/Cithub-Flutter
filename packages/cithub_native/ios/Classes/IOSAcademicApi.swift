@@ -7,6 +7,7 @@ final class IOSAcademicApi: AcademicHostApi {
     private let client: AcademicProtocolClient
     private var captcha: CaptchaDto?
     private var terms: [CoreAcademicTerm] = []
+    private var browserSessionPending = false
 
     init(store: any SecretStore, state: IOSSessionState, logger: IOSRuntimeLogStore) {
         self.store = store
@@ -22,6 +23,19 @@ final class IOSAcademicApi: AcademicHostApi {
             }
             if await client.refreshServerRoute() {
                 await logger.append(source: "academic", message: "Updated academic server from the WebVPN site list")
+            }
+            if browserSessionPending {
+                let origin = await client.webOrigin()
+                let host = URL(string: origin)?.host
+                let cookies = await allWebCookies()
+                let candidates = cookies.filter {
+                    $0.name == "JSESSIONID" && $0.domain.trimmingCharacters(in: CharacterSet(charactersIn: ".")) == host &&
+                        "/jsxsd/framework/xsMain.jsp".hasPrefix($0.path) && ($0.expiresDate == nil || $0.expiresDate! > Date())
+                }.sorted { $0.path.count > $1.path.count }
+                if let cookie = candidates.first {
+                    await client.importBrowserSession(cookie.value)
+                }
+                browserSessionPending = false
             }
             if let restored = try await client.initialize() {
                 terms = restored
@@ -83,6 +97,30 @@ final class IOSAcademicApi: AcademicHostApi {
                 terms = restored
             }
             return terms.map(academicTermDto)
+        }
+    }
+
+    func loadSelectionTerms(completion: @escaping (Result<[AcademicTermDto], Error>) -> Void) {
+        runNative(completion: completion) { [self] in
+            try await requireSession()
+            return try await client.loadSelectionTerms().map(academicTermDto)
+        }
+    }
+
+    func selectSavedAccount(username: String, completion: @escaping (Result<WebVpnSessionDto, Error>) -> Void) {
+        runNative(completion: completion) { [self] in
+            guard await savedUsernames().contains(username) else { throw CithubNativeError.invalidInput("保存的教务账号不可用") }
+            try await refreshCaptchaValue()
+            return await session(message: "已选择保存的教务账号")
+        }
+    }
+
+    func forgetSavedAccount(username: String, completion: @escaping (Result<WebVpnSessionDto, Error>) -> Void) {
+        runNative(completion: completion) { [self] in
+            await store.remove("academic.password.\(username)")
+            await store.remove("academic.saved_at.\(username)")
+            await store.put("academic.saved_usernames", (await savedUsernames()).filter { $0 != username }.joined(separator: "\n"))
+            return await session(message: "已忘记保存的教务账号")
         }
     }
 
@@ -148,9 +186,12 @@ final class IOSAcademicApi: AcademicHostApi {
 
     func prepareWebPage(path: String, completion: @escaping (Result<String, Error>) -> Void) {
         runNative(completion: completion) { [self] in
-            try await requireSession()
+            guard await state.webVPNAuthenticated else { throw CithubNativeError.loginRequired("请先登录 WebVPN") }
+            let url = try await client.webPageURL(path)
             await syncWebViewCookies()
-            return try await client.webPageURL(path)
+            browserSessionPending = true
+            await logger.append(source: "academic-web", message: "Prepared \(url) cookies=\(await client.cookieHeader())")
+            return url
         }
     }
 
@@ -233,9 +274,10 @@ final class IOSAcademicApi: AcademicHostApi {
     private func syncWebViewCookies() async {
         let origin = await client.webOrigin()
         guard let host = URL(string: origin)?.host else { return }
-        await syncCookies(
-            await client.cookieHeader(),
-            domains: ["webvpn.ccit.edu.cn", host]
-        )
+        let header = await client.cookieHeader()
+        await syncCookies(header, domains: ["webvpn.ccit.edu.cn", host])
+        if let session = CookieHeaderStore.parse(header)["JSESSIONID"] {
+            await syncCookies("JSESSIONID=\(session)", domains: [host], path: "/jsxsd")
+        }
     }
 }

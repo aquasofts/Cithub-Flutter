@@ -67,6 +67,7 @@ import okhttp3.Interceptor
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody
+import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 import org.json.JSONObject
@@ -290,6 +291,7 @@ internal class TiebaProtoClient(
         connection.doOutput = true
         connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
         connection.setRequestProperty("User-Agent", identity.userAgent)
+        logs.append("tieba-pb", "REQUEST POST $TIEBA_MINI_PIC_URL headers=${connection.requestProperties} form=$fields")
         connection.outputStream.use { output ->
             output.write(
                 fields.toSortedMap().entries.joinToString("&") { entry ->
@@ -301,7 +303,8 @@ internal class TiebaProtoClient(
         val status = connection.responseCode
         val stream = if (status in 200..299) connection.inputStream else connection.errorStream
         val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-        logs.append("tieba-pb", "PIC_PAGE -> HTTP $status")
+        logs.append("tieba-pb", "RESPONSE PIC_PAGE status=$status headers=${connection.headerFields} body=$body")
+        connection.disconnect()
         check(status in 200..299) { "贴吧原图接口失败（HTTP $status）" }
         val envelope = JSONObject(body)
         check(envelope.optString("error_code", "-1") == "0") {
@@ -1007,7 +1010,13 @@ private fun tiebaProtoHeaders(
         .header("x_bd_data_type", "protobuf")
         .build()
     try {
-        chain.proceed(request)
+        val buffer = okio.Buffer()
+        request.body?.writeTo(buffer)
+        logs.append("tieba-pb", "REQUEST $trace ${request.method} ${request.url} headers=${request.headers} bodyBase64=${java.util.Base64.getEncoder().encodeToString(buffer.readByteArray())}")
+        val response = chain.proceed(request)
+        val bytes = response.body?.bytes() ?: byteArrayOf()
+        logs.append("tieba-pb", "RESPONSE $trace ${response.code} headers=${response.headers} bodyBase64=${java.util.Base64.getEncoder().encodeToString(bytes)}")
+        response.newBuilder().body(bytes.toResponseBody(response.body?.contentType())).build()
     } catch (error: Throwable) {
         logs.append("tieba-pb", "$trace failed: ${error.javaClass.simpleName}: ${error.message}")
         throw error

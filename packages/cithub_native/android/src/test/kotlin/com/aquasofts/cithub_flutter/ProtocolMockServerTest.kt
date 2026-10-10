@@ -143,6 +143,66 @@ class ProtocolMockServerTest {
         assertTrue(homeRequest.body.readUtf8().contains("sjmsValue=scheme-1"))
     }
 
+    @Test
+    fun academicRecognizesTermSelectByIdAndKeepsRedirectCookies() {
+        server.enqueue(html("").setResponseCode(302).setHeader("Location", "/jsxsd/kscj/terms").setHeader("Set-Cookie", "JSESSIONID=hop; Path=/jsxsd"))
+        server.enqueue(html("<select id='kksj'><option value='2026-1'>学期</option></select>"))
+        val client = AcademicProtocolClient(store, logs, server.url("/jsxsd/").toString())
+        assertEquals("2026-1", client.initialize()!!.single().value)
+        server.takeRequest()
+        assertEquals("JSESSIONID=hop", server.takeRequest().getHeader("Cookie"))
+    }
+
+    @Test
+    fun academicStudentHomepageKeepsOtherFeaturesAvailableWhenGradeTermsChange() {
+        server.enqueue(html("<div>学生个人中心</div><a href='/jsxsd/framework/xsMain.jsp'>学生主页</a>"))
+        val client = AcademicProtocolClient(store, logs, server.url("/jsxsd/").toString())
+        assertTrue(client.initialize()!!.isEmpty())
+    }
+
+    @Test
+    fun academicLoginDoesNotTreatModernWebVpnPortalAsAnAcademicPage() {
+        server.enqueue(html("<html><title>WebVPN</title><div id='app'></div><script type='module' src='/assets/index-123.js'></script></html>"))
+        val client = AcademicProtocolClient(store, logs, server.url("/jsxsd/").toString())
+        assertNull(client.initialize())
+    }
+
+    @Test
+    fun academicEvaluationRetainsQuestionFieldsAndRejectsFailedSave() {
+        server.enqueue(html("""<form action='/jsxsd/xspj/xspj_save.do'><input type='hidden' name='pj06xh' value='q1'><input type='hidden' name='pj06xh' value='q2'><table><tr><td>指标1<input name='pj06xh' value='q1'></td><td><input type='radio' name='pj0601id_q1' value='a'>好</td></tr><tr><td>指标2<input name='pj06xh' value='q2'></td><td><input type='radio' name='pj0601id_q2' value='b'>好</td></tr></table><button onclick='saveData()'>保存</button></form>"""))
+        server.enqueue(html("<script>alert('保存失败：评价已关闭')</script>"))
+        val client = AcademicProtocolClient(store, logs, server.url("/jsxsd/").toString())
+        val form = client.loadEvaluationForm("xspj/form")
+        assertEquals(2, form.questions.size)
+        val result = runCatching { client.saveEvaluation(form, listOf(
+            com.aquasofts.cithub_flutter.native.EvaluationAnswerDto("q1", "a"),
+            com.aquasofts.cithub_flutter.native.EvaluationAnswerDto("q2", "b")), "", false) }
+        assertTrue(result.isFailure)
+        server.takeRequest()
+        val body = server.takeRequest().body.readUtf8()
+        assertTrue(body.contains("pj06xh=q1"))
+        assertTrue(body.contains("pj06xh=q2"))
+    }
+
+    @Test
+    fun academicWeeklyTimetableRetainsAllSevenDays() {
+        val cells = (1..7).joinToString("") { day -> "<td><div class='kbcontent1'>课程$day<br><font title='周次(节次)'>1-16周[01-02节]</font><font title='教室'>A101</font></div></td>" }
+        server.enqueue(html("<select name='xnxq01id'><option value='2026-1' selected>学期</option></select><table id='kbtable'><tr><th>周</th></tr><tr><td>08:00-09:35</td>$cells</tr></table>"))
+        server.enqueue(html("第 2 周/20 周"))
+        val client = AcademicProtocolClient(store, logs, server.url("/jsxsd/").toString())
+        assertEquals((1L..7L).toSet(), client.loadTimetable(null).courses.map { it.dayOfWeek }.toSet())
+    }
+
+    @Test
+    fun academicImportsBrowserLoginWithoutReplacingWebVpnCookie() {
+        store.put("webvpn.session.cookies", "SESSION=vpn; JSESSIONID=old")
+        server.enqueue(html("<select name='kksj'><option value='2026-1'>学期</option></select>"))
+        val client = AcademicProtocolClient(store, logs, server.url("/jsxsd/").toString())
+        client.importBrowserSession("SESSION=stale; JSESSIONID=browser")
+        assertEquals("2026-1", client.initialize()!!.single().value)
+        assertEquals("SESSION=vpn; JSESSIONID=browser", server.takeRequest().getHeader("Cookie"))
+    }
+
     private fun json(body: String) = MockResponse().setHeader("Content-Type", "application/json").setBody(body)
     private fun html(body: String) = MockResponse().setHeader("Content-Type", "text/html; charset=utf-8").setBody(body)
     private fun cells(values: List<String>): String = values.joinToString("") { "<td>$it</td>" }

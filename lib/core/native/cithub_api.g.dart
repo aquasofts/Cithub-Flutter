@@ -3145,6 +3145,63 @@ class AcademicHostApi {
     return (pigeonVar_replyValue! as List<Object?>).cast<AcademicTermDto>();
   }
 
+  Future<List<AcademicTermDto>> loadSelectionTerms() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.loadSelectionTerms$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return (pigeonVar_replyValue! as List<Object?>).cast<AcademicTermDto>();
+  }
+
+  Future<WebVpnSessionDto> selectSavedAccount(String username) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.selectSavedAccount$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[username]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as WebVpnSessionDto;
+  }
+
+  Future<WebVpnSessionDto> forgetSavedAccount(String username) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.forgetSavedAccount$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[username]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as WebVpnSessionDto;
+  }
+
   Future<List<CourseGradeDto>> loadGrades(String term, bool bestOnly) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.AcademicHostApi.loadGrades$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
@@ -3751,6 +3808,25 @@ class RuntimeLogHostApi {
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
 
   final String pigeonVar_messageChannelSuffix;
+
+  Future<bool> append(String source, String message) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.RuntimeLogHostApi.append$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[source, message]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as bool;
+  }
 
   Future<String> exportLog() async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.cithub_flutter.RuntimeLogHostApi.exportLog$pigeonVar_messageChannelSuffix';

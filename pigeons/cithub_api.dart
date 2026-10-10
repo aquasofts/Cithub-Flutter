@@ -701,6 +701,12 @@ abstract class AcademicHostApi {
   @async
   List<AcademicTermDto> loadTerms();
   @async
+  List<AcademicTermDto> loadSelectionTerms();
+  @async
+  WebVpnSessionDto selectSavedAccount(String username);
+  @async
+  WebVpnSessionDto forgetSavedAccount(String username);
+  @async
   List<CourseGradeDto> loadGrades(String term, bool bestOnly);
   @async
   TimetableDto loadTimetable(String? term);
@@ -791,6 +797,8 @@ abstract class SettingsHostApi {
 
 @HostApi()
 abstract class RuntimeLogHostApi {
+  @async
+  bool append(String source, String message);
   @async
   String exportLog();
   @async

@@ -2825,6 +2825,9 @@ protocol AcademicHostApi {
   func refreshCaptcha(completion: @escaping (Result<WebVpnSessionDto, Error>) -> Void)
   func login(request: LoginRequestDto, completion: @escaping (Result<WebVpnSessionDto, Error>) -> Void)
   func loadTerms(completion: @escaping (Result<[AcademicTermDto], Error>) -> Void)
+  func loadSelectionTerms(completion: @escaping (Result<[AcademicTermDto], Error>) -> Void)
+  func selectSavedAccount(username: String, completion: @escaping (Result<WebVpnSessionDto, Error>) -> Void)
+  func forgetSavedAccount(username: String, completion: @escaping (Result<WebVpnSessionDto, Error>) -> Void)
   func loadGrades(term: String, bestOnly: Bool, completion: @escaping (Result<[CourseGradeDto], Error>) -> Void)
   func loadTimetable(term: String?, completion: @escaping (Result<TimetableDto, Error>) -> Void)
   func loadSelectionResults(term: String, completion: @escaping (Result<[SelectedCourseDto], Error>) -> Void)
@@ -2905,6 +2908,55 @@ class AcademicHostApiSetup {
       }
     } else {
       loadTermsChannel.setMessageHandler(nil)
+    }
+    let loadSelectionTermsChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.cithub_flutter.AcademicHostApi.loadSelectionTerms\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      loadSelectionTermsChannel.setMessageHandler { _, reply in
+        api.loadSelectionTerms { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      loadSelectionTermsChannel.setMessageHandler(nil)
+    }
+    let selectSavedAccountChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.cithub_flutter.AcademicHostApi.selectSavedAccount\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      selectSavedAccountChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let usernameArg = args[0] as! String
+        api.selectSavedAccount(username: usernameArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      selectSavedAccountChannel.setMessageHandler(nil)
+    }
+    let forgetSavedAccountChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.cithub_flutter.AcademicHostApi.forgetSavedAccount\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      forgetSavedAccountChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let usernameArg = args[0] as! String
+        api.forgetSavedAccount(username: usernameArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      forgetSavedAccountChannel.setMessageHandler(nil)
     }
     let loadGradesChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.cithub_flutter.AcademicHostApi.loadGrades\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
@@ -3464,6 +3516,7 @@ class SettingsHostApiSetup {
 }
 /// Generated protocol from Pigeon that represents a handler of messages from Flutter.
 protocol RuntimeLogHostApi {
+  func append(source: String, message: String, completion: @escaping (Result<Bool, Error>) -> Void)
   func exportLog(completion: @escaping (Result<String, Error>) -> Void)
   func clearLog(completion: @escaping (Result<Bool, Error>) -> Void)
 }
@@ -3474,6 +3527,24 @@ class RuntimeLogHostApiSetup {
   /// Sets up an instance of `RuntimeLogHostApi` to handle messages through the `binaryMessenger`.
   static func setUp(binaryMessenger: FlutterBinaryMessenger, api: RuntimeLogHostApi?, messageChannelSuffix: String = "") {
     let channelSuffix = messageChannelSuffix.count > 0 ? ".\(messageChannelSuffix)" : ""
+    let appendChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.cithub_flutter.RuntimeLogHostApi.append\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      appendChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let sourceArg = args[0] as! String
+        let messageArg = args[1] as! String
+        api.append(source: sourceArg, message: messageArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      appendChannel.setMessageHandler(nil)
+    }
     let exportLogChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.cithub_flutter.RuntimeLogHostApi.exportLog\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       exportLogChannel.setMessageHandler { _, reply in

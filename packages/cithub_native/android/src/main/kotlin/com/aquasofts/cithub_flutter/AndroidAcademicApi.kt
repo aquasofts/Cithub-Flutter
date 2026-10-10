@@ -29,6 +29,8 @@ internal class AndroidAcademicApi(
 ) : AcademicHostApi {
     private val client = AcademicProtocolClient(state.secureStore, logs)
     private val captchaRecognizer = CaptchaRecognizer()
+    @Volatile private var allowAutomaticLogin = true
+    @Volatile private var browserSessionPending = false
     @Volatile private var captcha: CaptchaDto? = null
     @Volatile private var terms: List<AcademicTermDto> = emptyList()
 
@@ -37,6 +39,10 @@ internal class AndroidAcademicApi(
             check(state.webVpnSignedIn) { "请先登录 WebVPN" }
             if (client.refreshServerRoute()) {
                 logs.append("academic", "Updated academic server from the WebVPN site list")
+            }
+            if (browserSessionPending) {
+                client.importBrowserSession(CookieManager.getInstance().getCookie(client.webPageUrl("framework/xsMain.jsp")).orEmpty())
+                browserSessionPending = false
             }
             val restored = client.initialize()
             if (restored != null) {
@@ -47,7 +53,7 @@ internal class AndroidAcademicApi(
                 session("已恢复教务系统会话")
             } else {
                 state.academicSignedIn = false
-                if (tryAutomaticLogin(webVpnUsername)) {
+                if (allowAutomaticLogin && tryAutomaticLogin(webVpnUsername)) {
                     return@runAsync session("已自动续登教务系统")
                 }
                 refreshCaptchaBlocking()
@@ -73,6 +79,7 @@ internal class AndroidAcademicApi(
                     ?: error("保存的教务密码不可用，请重新输入")
             } else request.password
             terms = client.login(username, password, request.captchaCode)
+            allowAutomaticLogin = true
             state.academicSignedIn = true
             state.academicUsername = username
             state.secureStore.put("academic.last_username", username)
@@ -88,6 +95,24 @@ internal class AndroidAcademicApi(
                 if (terms.isEmpty()) terms = client.initialize() ?: throw AcademicLoginRequired("教务登录已过期")
             }
             terms
+        }
+
+    override fun loadSelectionTerms(callback: (Result<List<AcademicTermDto>>) -> Unit) =
+        runAsync(executor, mainHandler, callback) { withSessionRecovery { client.loadSelectionTerms() } }
+
+    override fun selectSavedAccount(username: String, callback: (Result<WebVpnSessionDto>) -> Unit) =
+        runAsync(executor, mainHandler, callback) {
+            check(username in savedUsernames()) { "保存的教务账号不可用" }
+            refreshCaptchaBlocking()
+            session("已选择保存的教务账号")
+        }
+
+    override fun forgetSavedAccount(username: String, callback: (Result<WebVpnSessionDto>) -> Unit) =
+        runAsync(executor, mainHandler, callback) {
+            state.secureStore.remove("academic.password.$username")
+            state.secureStore.remove("academic.saved_at.$username")
+            state.secureStore.put("academic.saved_usernames", savedUsernames().filterNot { it == username }.joinToString("\n"))
+            session("已忘记保存的教务账号")
         }
 
     override fun loadGrades(term: String, bestOnly: Boolean, callback: (Result<List<CourseGradeDto>>) -> Unit) =
@@ -120,16 +145,19 @@ internal class AndroidAcademicApi(
 
     override fun prepareWebPage(path: String, callback: (Result<String>) -> Unit) =
         runAsync(executor, mainHandler, callback) {
-            withSessionRecovery {
-                syncWebViewCookies()
-                client.webPageUrl(path)
-            }
+            check(state.webVpnSignedIn) { "请先登录 WebVPN" }
+            val url = client.webPageUrl(path)
+            syncWebViewCookies()
+            browserSessionPending = true
+            logs.append("academic-web", "Prepared $url cookies=${client.cookieHeader()}")
+            url
         }
 
     override fun logout(callback: (Result<Boolean>) -> Unit) =
         runAsync(executor, mainHandler, callback) {
             val academicOrigin = client.webOrigin()
             client.logout()
+            allowAutomaticLogin = false
             clearAcademicWebViewCookie(academicOrigin)
             state.academicSignedIn = false
             state.academicUsername = null
@@ -142,7 +170,7 @@ internal class AndroidAcademicApi(
     private fun refreshCaptchaBlocking() {
         val image = client.loadCaptcha()
         val recognized = if (BuildConfig.CAPTCHA_AUTOFILL_ENABLED) {
-            runCatching { captchaRecognizer.recognize(image) }.getOrDefault("")
+            runCatching { captchaRecognizer.recognize(image) }.onFailure { logs.append("academic-captcha-error", it.stackTraceToString()) }.getOrDefault("")
         } else ""
         captcha = CaptchaDto("academic-${System.currentTimeMillis()}", image, recognized)
     }
@@ -176,6 +204,7 @@ internal class AndroidAcademicApi(
             logs.append("academic", "Academic session automatically renewed")
             true
         }.getOrElse {
+            logs.append("academic-auto-login-error", it.stackTraceToString())
             state.academicSignedIn = false
             false
         }
@@ -224,6 +253,7 @@ internal class AndroidAcademicApi(
         client.cookieHeader().split(';').map(String::trim).filter(String::isNotBlank).forEach { cookie ->
             manager.setCookie("https://webvpn.ccit.edu.cn/", "$cookie; Path=/; Secure")
             manager.setCookie(origin, "$cookie; Path=/; Secure")
+            if (cookie.startsWith("JSESSIONID=")) manager.setCookie(origin, "$cookie; Path=/jsxsd; Secure")
         }
         manager.flush()
     }
@@ -233,6 +263,7 @@ internal class AndroidAcademicApi(
         val value = "JSESSIONID=; Path=/; Max-Age=0; Secure"
         manager.setCookie("https://webvpn.ccit.edu.cn/", value)
         manager.setCookie(academicOrigin, value)
+        manager.setCookie(academicOrigin, "JSESSIONID=; Path=/jsxsd; Max-Age=0; Secure")
         manager.flush()
     }
 }

@@ -53,36 +53,7 @@ final class KeychainSecretStore: SecretStore, @unchecked Sendable {
     }
 }
 
-actor IOSRuntimeLogStore: RuntimeLogger {
-    private var entries: [String] = []
-    private let fileURL: URL
-
-    init() {
-        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-        fileURL = base.appendingPathComponent("cithub-runtime.log")
-    }
-
-    func append(source: String, message: String) async {
-        let timestamp = ISO8601DateFormatter().string(from: Date())
-        entries.append("[\(timestamp)] [\(source)] \(message)")
-        if entries.count > 2000 { entries.removeFirst(entries.count - 2000) }
-    }
-
-    func export() throws -> String {
-        let data = Data((entries.joined(separator: "\n") + "\n").utf8)
-        try FileManager.default.createDirectory(
-            at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true
-        )
-        try data.write(to: fileURL, options: .atomic)
-        return fileURL.path
-    }
-
-    func clear() {
-        entries.removeAll()
-        try? FileManager.default.removeItem(at: fileURL)
-    }
-}
+typealias IOSRuntimeLogStore = PersistentRuntimeLog
 
 actor IOSSessionState {
     private(set) var webVPNUsername: String?
@@ -118,6 +89,7 @@ final class IOSNativeEvents: EventsStreamHandler {
 
     @MainActor
     func emit(source: String, stage: String, message: String? = nil, progress: Double? = nil) {
+        Task { await PersistentRuntimeLog.shared.append(source: source, message: "EVENT \(stage) progress=\(String(describing: progress)) \(message ?? "")") }
         eventSink?.success(NativeEventDto(
             source: source,
             stage: stage,
@@ -137,6 +109,7 @@ func runNative<T>(
             let value = try await operation()
             await MainActor.run { completion(.success(value)) }
         } catch let error as CithubNativeError {
+            await PersistentRuntimeLog.shared.append(source: "native-error", message: String(reflecting: error))
             let pigeonError = PigeonError(
                 code: error.code,
                 message: error.localizedDescription,
@@ -144,6 +117,7 @@ func runNative<T>(
             )
             await MainActor.run { completion(.failure(pigeonError)) }
         } catch {
+            await PersistentRuntimeLog.shared.append(source: "native-error", message: String(reflecting: error))
             await MainActor.run { completion(.failure(error)) }
         }
     }
@@ -157,13 +131,13 @@ func allWebCookies() async -> [HTTPCookie] {
 }
 
 @MainActor
-func syncCookies(_ header: String, domains: [String]) async {
+func syncCookies(_ header: String, domains: [String], path: String = "/") async {
     let pairs = CookieHeaderStore.parse(header)
     for domain in domains {
         for (name, value) in pairs {
             let properties: [HTTPCookiePropertyKey: Any] = [
                 .domain: domain,
-                .path: "/",
+                .path: path,
                 .name: name,
                 .value: value,
                 .secure: "TRUE",

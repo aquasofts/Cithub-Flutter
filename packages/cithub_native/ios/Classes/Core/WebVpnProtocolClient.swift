@@ -23,7 +23,7 @@ public actor WebVpnProtocolClient {
         self.store = store
         self.logger = logger
         self.baseURL = baseURL.absoluteString.hasSuffix("/") ? baseURL : URL(string: baseURL.absoluteString + "/")!
-        self.transport = transport
+        self.transport = LoggingHTTPTransport(transport, logger: logger, source: "WebVpnProtocolClient")
         self.cookies = CookieHeaderStore(store: store)
     }
 

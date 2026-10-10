@@ -3,38 +3,41 @@ package com.aquasofts.cithub_flutter
 import android.content.Context
 import java.io.File
 import java.time.Instant
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 internal class RuntimeLogStore(private val context: Context) {
-    private val file = File(context.filesDir, "logs/runtime.log")
+    private val directory = File(context.filesDir, "logs")
+    private val file = File(directory, "runtime.log")
 
     @Synchronized
     fun append(source: String, message: String) {
-        file.parentFile?.mkdirs()
-        if (file.length() >= MAX_BYTES) {
-            val old = File(file.parentFile, "runtime.log.1")
-            old.delete()
-            file.renameTo(old)
-        }
+        check(directory.isDirectory || directory.mkdirs()) { "无法创建日志目录" }
         file.appendText("${Instant.now()} [$source] $message\n")
     }
 
     @Synchronized
     fun export(): File {
-        file.parentFile?.mkdirs()
-        if (!file.exists()) file.writeText("No runtime entries.\n")
-        val target = File(context.cacheDir, "exports/cithub-runtime-${System.currentTimeMillis()}.log")
-        target.parentFile?.mkdirs()
-        file.copyTo(target, overwrite = true)
+        append("runtime", "Exporting all retained logs as ZIP; redaction=false")
+        val target = File(context.cacheDir, "exports/cithub-logs-${java.util.UUID.randomUUID()}.zip")
+        check(target.parentFile!!.isDirectory || target.parentFile!!.mkdirs()) { "无法创建导出目录" }
+        try {
+            ZipOutputStream(target.outputStream().buffered()).use { zip ->
+                directory.walkTopDown().filter { it.isFile }.sortedBy { it.path }.forEach { source ->
+                    zip.putNextEntry(ZipEntry(source.relativeTo(directory).invariantSeparatorsPath))
+                    source.inputStream().use { it.copyTo(zip) }
+                    zip.closeEntry()
+                }
+            }
+        } catch (error: Throwable) {
+            target.delete()
+            throw error
+        }
         return target
     }
 
     @Synchronized
     fun clear() {
-        file.delete()
-        File(file.parentFile, "runtime.log.1").delete()
-    }
-
-    private companion object {
-        const val MAX_BYTES = 1024L * 1024L
+        check(!directory.exists() || directory.deleteRecursively()) { "无法清除日志" }
     }
 }

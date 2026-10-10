@@ -52,11 +52,13 @@ ANDROID_SIGNING_KEY_PASSWORD
 ## 安全约束
 
 - WebVPN 密码、教务密码和贴吧 Cookie/token 使用 Android Keystore AES-GCM 加密。
-- 完整诊断日志仅写入本机滚动文件，只有用户主动操作才导出，绝不自动上传。
+- 完整诊断日志持续写入本机持久文件，不自动覆盖历史；设置中可主动导出全部已保存日志的 ZIP，不脱敏，绝不自动上传。
 - 更新器只接受比当前版本更新、属于当前 flavor 的精确文件名；Release 必须同时提供 `SHA256SUMS`，下载后校验大小、SHA-256、包名、versionName、递增 versionCode 和当前应用签名，全部通过后才打开系统安装器。
 - 文章、RSS、图片和 WebView 导航只允许 HTTPS；新闻正文会先清除脚本、表单和事件属性，再由本地 WebView 按原 DOM 顺序渲染。
 - 贴吧不实现应用内发帖协议。长按主楼、普通楼层或楼中楼回复后选择“回复”，应用会打开官方百度贴吧客户端；普通楼层会携带 `postId` 定位到对应楼层，未安装官方客户端时给出明确提示。
 - 贴吧登录入口仅位于“我的”页，使用移动端登录页和移动 UA；主页贴吧可在设置中修改，默认显示“长春工程学院吧”。
+
+教务逐项核对、日志范围与验证边界见 [docs/academic-parity.md](docs/academic-parity.md)。
 
 详细发布流程见 [docs/release.md](docs/release.md)，真机清单见 [docs/device-acceptance.md](docs/device-acceptance.md)。
 

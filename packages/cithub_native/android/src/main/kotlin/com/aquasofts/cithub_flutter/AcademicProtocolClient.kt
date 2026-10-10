@@ -87,9 +87,13 @@ internal class AcademicProtocolClient(
     fun initialize(): List<AcademicTermDto>? {
         val html = get("kscj/cjcx_query", "连接教务系统失败")
         if (isLoginPage(html)) return null
-        return parseTerms(Jsoup.parse(html), "kksj").ifEmpty {
-            error("无法识别教务系统的学期列表，页面结构可能已更新")
+        val document = Jsoup.parse(html)
+        val terms = parseTerms(document, "kksj")
+        if (terms.isEmpty()) {
+            logs.append("academic-parser", "Missing grade terms; title=${document.title()} html=$html")
+            check(isStudentPage(html)) { "无法识别教务系统页面，请导出完整日志以检查服务器返回内容" }
         }
+        return terms
     }
 
     fun loadCaptcha(): String {
@@ -147,7 +151,7 @@ internal class AcademicProtocolClient(
     fun loadSelectionTerms(): List<AcademicTermDto> {
         val html = get("xkgl/xsxkjgcx", "加载选课结果查询条件失败")
         requireSession(html)
-        return parseTerms(Jsoup.parse(html), "xnxqid")
+        return parseTerms(Jsoup.parse(html), "xnxqid").also { check(it.isNotEmpty()) { "无法识别选课结果的学期列表，页面结构可能已更新" } }
     }
 
     fun loadSelectionResults(term: String): List<SelectedCourseDto> {
@@ -235,16 +239,19 @@ internal class AcademicProtocolClient(
     ): Boolean {
         check(!form.readOnly) { "该评价已提交，不能再修改" }
         val selected = answers.associate { it.questionId to it.optionId }
-        check(form.questions.all { selected[it.id].orEmpty().isNotBlank() }) { "请完成每一项评价指标" }
-        val fields = linkedMapOf<String, String>()
-        form.hiddenFields.filterNot { it.name == "issubmit" || it.name == "sfxyt" }
-            .forEach { fields[it.name] = it.value }
-        form.questions.forEach { fields["pj0601id_${it.id}"] = selected.getValue(it.id) }
-        form.suggestionField?.let { fields[it] = suggestion }
-        fields["issubmit"] = if (submit) "1" else "0"
-        fields["sfxyt"] = "0"
-        val html = post(safePath(form.actionPath), fields, if (submit) "提交学生评价失败" else "保存学生评价失败")
+        check(form.questions.isNotEmpty() && form.questions.all { question -> question.options.any { it.id == selected[question.id] } }) { "请完成每一项评价指标" }
+        val fields = form.hiddenFields.filterNot { it.name == "issubmit" || it.name == "sfxyt" }
+            .map { it.name to it.value }.toMutableList()
+        form.questions.forEach { fields += "pj0601id_${it.id}" to selected.getValue(it.id) }
+        form.suggestionField?.let { fields += it to suggestion }
+        fields += "issubmit" to if (submit) "1" else "0"
+        fields += "sfxyt" to "0"
+        val response = request(safePath(form.actionPath), "POST", formPairs = fields)
+        check(response.status in 200..299) { "保存学生评价失败（HTTP ${response.status}）" }
+        val html = response.text
         requireSession(html)
+        val alert = Regex("""alert\s*\(\s*['"]([^'"]+)['"]""").find(html)?.groupValues?.get(1)
+        check(alert == null || alert.contains("成功")) { alert.orEmpty() }
         return true
     }
 
@@ -252,12 +259,14 @@ internal class AcademicProtocolClient(
         var html = get("xskb/xskb_list.do", "加载理论课表失败")
         requireSession(html)
         var parsed = parseTimetable(html)
+        val currentTerm = parsed.dto.selectedTerm
         timetableSchemeId = parsed.schemeId.ifBlank { timetableSchemeId.orEmpty() }
         if (!term.isNullOrBlank() && term != parsed.dto.selectedTerm) {
             html = post("xskb/xskb_list.do", mapOf(
                 "jx0404id" to "", "cj0701id" to "", "zc" to "", "demo" to "",
                 "xnxq01id" to term, "sfFD" to "1", "kbjcmsid" to timetableSchemeId.orEmpty(),
             ), "加载理论课表失败")
+            requireSession(html)
             parsed = parseTimetable(html)
         }
         // The student home page is the authoritative source for the calendar
@@ -285,9 +294,15 @@ internal class AcademicProtocolClient(
         }
         return TimetableDto(
             parsed.dto.terms, parsed.dto.selectedTerm, parsed.dto.periods,
-            homeCourses.ifEmpty { expectedTodayCourses }, parsed.dto.note,
-            today.toString(), teachingWeek?.first, teachingWeek?.second,
+            if (homeCourses.isEmpty() || (!term.isNullOrBlank() && term != currentTerm)) parsed.dto.courses else
+                parsed.dto.courses.filterNot { it in expectedTodayCourses } + homeCourses, parsed.dto.note,
+            today.toString(), if (term.isNullOrBlank() || term == currentTerm) teachingWeek?.first else null, teachingWeek?.second,
         )
+    }
+
+    fun importBrowserSession(header: String) {
+        val session = header.split(';').map(String::trim).firstOrNull { it.startsWith("JSESSIONID=") }
+        if (session != null) mergeCookies(listOf(session))
     }
 
     fun webPageUrl(path: String): String = baseUrl + safePath(path)
@@ -310,7 +325,7 @@ internal class AcademicProtocolClient(
         val periods = mutableListOf<TimetablePeriodDto>()
         val courses = mutableListOf<TimetableCourseDto>()
         rows.drop(1).forEachIndexed { rowIndex, row ->
-            val cells = row.select(":scope > th, :scope > td")
+            val cells = row.children().filter { it.tagName() == "th" || it.tagName() == "td" }
             if (cells.size < 8) return@forEachIndexed
             val periodIndex = rowIndex + 1L
             val periodText = cells[0].text()
@@ -332,7 +347,8 @@ internal class AcademicProtocolClient(
             ?: document.selectFirst("select[name=kbjcmsid] option")?.attr("value")
             ?.ifBlank { null }
             ?: document.selectFirst("input[name=kbjcmsid]")?.attr("value").orEmpty()
-        return ParsedTimetable(TimetableDto(terms, selected, periods, courses, "", null, null, null), scheme)
+        val note = rows.lastOrNull()?.takeIf { it.children().filter { cell -> cell.tagName() in listOf("td", "th") }.size < 8 }?.text().orEmpty().removePrefix("备注:").removePrefix("备注：").trim()
+        return ParsedTimetable(TimetableDto(terms, selected, periods, courses, note, null, null, null), scheme)
     }
 
     private fun parseTimetableCell(cell: Element, day: Long, period: Long): List<TimetableCourseDto> {
@@ -360,7 +376,7 @@ internal class AcademicProtocolClient(
         val column = headers.indexOfFirst { it.contains("星期${weekdayName(dayOfWeek)}") }
         if (column < 1) return emptyList()
         return table.select("tbody tr").flatMapIndexed { index, row ->
-            val cells = row.select(":scope > th, :scope > td")
+            val cells = row.children().filter { it.tagName() == "th" || it.tagName() == "td" }
             val period = index + 1L
             cells.getOrNull(column)?.let { parseTimetableCell(it, dayOfWeek.toLong(), period) }.orEmpty()
         }
@@ -404,7 +420,7 @@ internal class AcademicProtocolClient(
     }
 
     private fun parseTerms(document: Document, name: String): List<AcademicTermDto> =
-        document.select("select[name=$name] option").map {
+        document.select("select[name=$name] option, select[id=$name] option").map {
             AcademicTermDto(it.attr("value"), it.text(), it.hasAttr("selected"))
         }.filter { it.label.isNotBlank() }
 
@@ -420,8 +436,8 @@ internal class AcademicProtocolClient(
         return response.text
     }
 
-    private data class Response(val status: Int, val location: String?, val bytes: ByteArray) {
-        val text: String get() = bytes.toString(Charsets.UTF_8)
+    private data class Response(val status: Int, val location: String?, val bytes: ByteArray, val charset: java.nio.charset.Charset = Charsets.UTF_8) {
+        val text: String get() = bytes.toString(charset)
     }
 
     private fun request(
@@ -429,21 +445,26 @@ internal class AcademicProtocolClient(
         method: String = "GET",
         form: Map<String, String>? = null,
         followRedirects: Boolean = true,
+        formPairs: List<Pair<String, String>>? = null,
+        redirectCount: Int = 0,
     ): Response {
         val safePath = if (path.startsWith(baseUrl)) path.removePrefix(baseUrl) else safePath(path)
         val connection = URL(baseUrl + safePath).openConnection() as HttpURLConnection
         connection.requestMethod = method
         connection.connectTimeout = 20_000
         connection.readTimeout = 20_000
-        connection.instanceFollowRedirects = followRedirects
+        connection.instanceFollowRedirects = false
         connection.setRequestProperty("User-Agent", BROWSER_USER_AGENT)
         connection.setRequestProperty("Accept-Language", "zh-CN,zh;q=0.9")
         cookieHeader().takeIf(String::isNotBlank)?.let { connection.setRequestProperty("Cookie", it) }
-        if (form != null) {
+        val fields = formPairs ?: form?.entries?.map { it.key to it.value }
+        val requestHeaders = connection.requestProperties.toMap()
+        logs.append("academic", "REQUEST $method ${connection.url} headers=$requestHeaders form=$fields")
+        if (fields != null) {
             connection.doOutput = true
             connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
             connection.outputStream.use { output ->
-                output.write(form.entries.joinToString("&") { "${encode(it.key)}=${encode(it.value)}" }.toByteArray())
+                output.write(fields.joinToString("&") { "${encode(it.first)}=${encode(it.second)}" }.toByteArray())
             }
         }
         val status = connection.responseCode
@@ -451,8 +472,22 @@ internal class AcademicProtocolClient(
             .firstOrNull { it.key?.equals("set-cookie", true) == true }?.value.orEmpty())
         val stream = if (status in 200..399) connection.inputStream else connection.errorStream
         val bytes = stream?.use { it.readBytes() } ?: byteArrayOf()
-        logs.append("academic", "$method /jsxsd/$safePath -> HTTP $status")
-        return Response(status, connection.getHeaderField("Location"), bytes)
+        logs.append("academic", "$method ${connection.url} requestHeaders=${requestHeaders} form=${fields} responseHeaders=${connection.headerFields} status=$status bodyBase64=${java.util.Base64.getEncoder().encodeToString(bytes)}")
+        val location = connection.getHeaderField("Location")
+        val charset = Regex("charset=([^;\\s]+)", RegexOption.IGNORE_CASE).find(connection.contentType.orEmpty())?.groupValues?.get(1)
+            ?.trim('"', '\'')?.let { runCatching { java.nio.charset.Charset.forName(it) }.getOrNull() } ?: Charsets.UTF_8
+        connection.disconnect()
+        if (followRedirects && status in 300..399 && location != null) {
+            val next = URL(URL(baseUrl + safePath), location)
+            val base = URL(baseUrl)
+            if (redirectCount >= 10 || next.protocol != base.protocol || next.host != base.host || next.port != base.port || !next.path.startsWith(base.path)) {
+                throw AcademicLoginRequired("教务系统跳转到登录入口，请重新登录 WebVPN")
+            }
+            val preserve = status == 307 || status == 308
+            return request(next.toString(), if (preserve) method else "GET", if (preserve) form else null,
+                formPairs = if (preserve) formPairs else null, redirectCount = redirectCount + 1)
+        }
+        return Response(status, location, bytes, charset)
     }
 
     @Synchronized
@@ -479,12 +514,23 @@ internal class AcademicProtocolClient(
         if (isLoginPage(html)) throw AcademicLoginRequired("教务系统登录已过期，请重新登录")
     }
 
+    private fun isStudentPage(html: String): Boolean =
+        html.contains("framework/xsMain.jsp", true) || html.contains("学生个人中心") ||
+            (html.contains("/jsxsd/", true) && html.contains("退出", true) && html.contains("学生"))
+
     private fun isLoginPage(html: String): Boolean = html.contains("LoginToXk", true) ||
         html.contains("verifycode.servlet", true) ||
         (html.contains("userAccount", true) && html.contains("RANDOMCODE", true)) ||
-        (html.contains("browser-compatibility", true) && html.contains("WebVPN", true))
+        (html.contains("WebVPN", true) &&
+            (html.contains("browser-compatibility", true) ||
+                (Jsoup.parse(html).selectFirst("#app") != null && html.contains("/assets/", true))))
 
     private fun safePath(path: String): String {
+        if (path.startsWith("http", true) || path.startsWith("//")) {
+            val candidate = URL(URL(baseUrl), path)
+            val base = URL(baseUrl)
+            require(candidate.protocol == base.protocol && candidate.host == base.host && candidate.port == base.port && candidate.path.startsWith(base.path)) { "教务系统返回了无效页面地址" }
+        }
         val normalized = path.substringAfter("/jsxsd/", path).trimStart('/')
         require(!normalized.startsWith("http", true) && !normalized.contains("..")) { "教务系统返回了无效页面地址" }
         return normalized

@@ -16,6 +16,9 @@ abstract interface class CithubPlatform {
   Future<WebVpnSessionDto> loginAcademic(LoginRequestDto request);
   Future<bool> logoutAcademic();
   Future<List<AcademicTermDto>> loadAcademicTerms();
+  Future<List<AcademicTermDto>> loadSelectionTerms();
+  Future<WebVpnSessionDto> selectSavedAcademicAccount(String username);
+  Future<WebVpnSessionDto> forgetSavedAcademicAccount(String username);
   Future<List<CourseGradeDto>> loadGrades(String term, {bool bestOnly = false});
   Future<TimetableDto> loadTimetable([String? term]);
   Future<List<SelectedCourseDto>> loadSelectionResults(String term);
@@ -110,6 +113,15 @@ class PigeonCithubPlatform implements CithubPlatform {
   Future<bool> logoutAcademic() => _academic.logout();
   @override
   Future<List<AcademicTermDto>> loadAcademicTerms() => _academic.loadTerms();
+  @override
+  Future<List<AcademicTermDto>> loadSelectionTerms() =>
+      _academic.loadSelectionTerms();
+  @override
+  Future<WebVpnSessionDto> selectSavedAcademicAccount(String username) =>
+      _academic.selectSavedAccount(username);
+  @override
+  Future<WebVpnSessionDto> forgetSavedAcademicAccount(String username) =>
+      _academic.forgetSavedAccount(username);
   @override
   Future<List<CourseGradeDto>> loadGrades(
     String term, {

@@ -115,6 +115,7 @@ internal class WebVpnProtocolClient(
         connection.setRequestProperty("Referer", baseUrl)
         connection.setRequestProperty("DNT", "1")
         if (cookieHeader.isNotBlank()) connection.setRequestProperty("Cookie", cookieHeader)
+        logs.append("webvpn", "REQUEST $method ${connection.url} headers=${connection.requestProperties} body=${json}")
         if (json != null) {
             connection.doOutput = true
             connection.setRequestProperty("Content-Type", "application/json")
@@ -126,7 +127,8 @@ internal class WebVpnProtocolClient(
             ?.value.orEmpty())
         val stream = if (status in 200..299) connection.inputStream else connection.errorStream
         val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-        logs.append("webvpn", "$method /$path -> HTTP $status")
+        logs.append("webvpn", "RESPONSE $method ${connection.url} status=$status headers=${connection.headerFields} body=$text")
+        connection.disconnect()
         if (status !in 200..299) {
             val message = runCatching { JSONObject(text).optString("message") }.getOrNull()
             error(message?.takeIf(String::isNotBlank) ?: "WebVPN 请求失败（HTTP $status）")

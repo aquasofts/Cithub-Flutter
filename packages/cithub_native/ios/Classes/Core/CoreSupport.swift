@@ -1,4 +1,5 @@
 import Foundation
+import CoreFoundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
@@ -115,7 +116,16 @@ public struct HTTPResponse: Sendable {
         return HTTPResponse(status: status, headers: result, data: body)
     }
 
-    public var text: String { String(decoding: data, as: UTF8.self) }
+    public var text: String {
+        let type = header("Content-Type") ?? ""
+        let charset = type.components(separatedBy: "charset=").last?.components(separatedBy: ";").first?.trimmingCharacters(in: CharacterSet(charactersIn: " \"'"))
+        if type.lowercased().contains("charset="), let charset {
+            let encoding = CFStringConvertIANACharSetNameToEncoding(charset as CFString)
+            if encoding != kCFStringEncodingInvalidId,
+               let text = String(data: data, encoding: String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(encoding))) { return text }
+        }
+        return String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
+    }
 
     public func header(_ name: String) -> String? {
         headers.first { $0.key.caseInsensitiveCompare(name) == .orderedSame }?.value
@@ -186,15 +196,42 @@ public final class URLSessionTransport: HTTPTransport, @unchecked Sendable {
     }
 }
 
+public struct LoggingHTTPTransport: HTTPTransport {
+    private let transport: any HTTPTransport
+    private let logger: any RuntimeLogger
+    private let source: String
+
+    public init(_ transport: any HTTPTransport, logger: any RuntimeLogger, source: String) {
+        self.transport = transport
+        self.logger = logger
+        self.source = source
+    }
+
+    public func perform(_ call: HTTPCall) async throws -> HTTPResponse {
+        await logger.append(source: source, message: "REQUEST \(call.method) \(call.url.absoluteString) headers=\(call.headers) bodyBase64=\(call.body.base64EncodedString())")
+        do {
+            let response = try await transport.perform(call)
+            await logger.append(source: source, message: "RESPONSE \(response.status) url=\(response.finalURL?.absoluteString ?? call.url.absoluteString) headers=\(response.headers) bodyBase64=\(response.data.base64EncodedString())")
+            return response
+        } catch {
+            await logger.append(source: source, message: "FAILURE \(call.method) \(call.url.absoluteString) \(String(reflecting: error))")
+            throw error
+        }
+    }
+}
+
 public enum FormEncoding {
     public static func encode(_ fields: [String: String], sorted: Bool = false) -> Data {
         let entries = sorted ? fields.sorted { $0.key < $1.key } : Array(fields)
-        return Data(entries.map { "\(percent($0.key))=\(percent($0.value))" }.joined(separator: "&").utf8)
+        return encode(entries.map { ($0.key, $0.value) })
+    }
+
+    public static func encode(_ fields: [(String, String)]) -> Data {
+        Data(fields.map { "\(percent($0.0))=\(percent($0.1))" }.joined(separator: "&").utf8)
     }
 
     public static func percent(_ value: String) -> String {
-        var allowed = CharacterSet.alphanumerics
-        allowed.insert(charactersIn: "-._~")
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")
         return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
     }
 }

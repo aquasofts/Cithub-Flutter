@@ -60,7 +60,8 @@ public enum HTMLParser {
 
     public static func options(in html: String, selectName: String) -> [CoreAcademicTerm] {
         guard let select = elements("select", in: html).first(where: {
-            $0.attribute("name").caseInsensitiveCompare(selectName) == .orderedSame
+            $0.attribute("name").caseInsensitiveCompare(selectName) == .orderedSame ||
+            $0.attribute("id").caseInsensitiveCompare(selectName) == .orderedSame
         }) else { return [] }
         return elements("option", in: select.innerHTML).compactMap { option in
             let label = option.text

@@ -2866,6 +2866,9 @@ interface AcademicHostApi {
   fun refreshCaptcha(callback: (Result<WebVpnSessionDto>) -> Unit)
   fun login(request: LoginRequestDto, callback: (Result<WebVpnSessionDto>) -> Unit)
   fun loadTerms(callback: (Result<List<AcademicTermDto>>) -> Unit)
+  fun loadSelectionTerms(callback: (Result<List<AcademicTermDto>>) -> Unit)
+  fun selectSavedAccount(username: String, callback: (Result<WebVpnSessionDto>) -> Unit)
+  fun forgetSavedAccount(username: String, callback: (Result<WebVpnSessionDto>) -> Unit)
   fun loadGrades(term: String, bestOnly: Boolean, callback: (Result<List<CourseGradeDto>>) -> Unit)
   fun loadTimetable(term: String?, callback: (Result<TimetableDto>) -> Unit)
   fun loadSelectionResults(term: String, callback: (Result<List<SelectedCourseDto>>) -> Unit)
@@ -2948,6 +2951,64 @@ interface AcademicHostApi {
         if (api != null) {
           channel.setMessageHandler { _, reply ->
             api.loadTerms{ result: Result<List<AcademicTermDto>> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(CithubApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(CithubApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.cithub_flutter.AcademicHostApi.loadSelectionTerms$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            api.loadSelectionTerms{ result: Result<List<AcademicTermDto>> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(CithubApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(CithubApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.cithub_flutter.AcademicHostApi.selectSavedAccount$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val usernameArg = args[0] as String
+            api.selectSavedAccount(usernameArg) { result: Result<WebVpnSessionDto> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(CithubApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(CithubApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.cithub_flutter.AcademicHostApi.forgetSavedAccount$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val usernameArg = args[0] as String
+            api.forgetSavedAccount(usernameArg) { result: Result<WebVpnSessionDto> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(CithubApiPigeonUtils.wrapError(error))
@@ -3616,6 +3677,7 @@ interface SettingsHostApi {
 }
 /** Generated interface from Pigeon that represents a handler of messages from Flutter. */
 interface RuntimeLogHostApi {
+  fun append(source: String, message: String, callback: (Result<Boolean>) -> Unit)
   fun exportLog(callback: (Result<String>) -> Unit)
   fun clearLog(callback: (Result<Boolean>) -> Unit)
 
@@ -3628,6 +3690,27 @@ interface RuntimeLogHostApi {
     @JvmOverloads
     fun setUp(binaryMessenger: BinaryMessenger, api: RuntimeLogHostApi?, messageChannelSuffix: String = "") {
       val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.cithub_flutter.RuntimeLogHostApi.append$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val sourceArg = args[0] as String
+            val messageArg = args[1] as String
+            api.append(sourceArg, messageArg) { result: Result<Boolean> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(CithubApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(CithubApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
       run {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.cithub_flutter.RuntimeLogHostApi.exportLog$separatedMessageChannelSuffix", codec)
         if (api != null) {

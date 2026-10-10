@@ -78,6 +78,15 @@ class DemoCithubPlatform implements CithubPlatform {
   Future<bool> logoutAcademic() async => true;
 
   @override
+  Future<List<AcademicTermDto>> loadSelectionTerms() => loadAcademicTerms();
+  @override
+  Future<WebVpnSessionDto> selectSavedAcademicAccount(String username) =>
+      refreshAcademicCaptcha();
+  @override
+  Future<WebVpnSessionDto> forgetSavedAcademicAccount(String username) =>
+      refreshAcademicCaptcha();
+
+  @override
   Future<List<AcademicTermDto>> loadAcademicTerms() async => [
     AcademicTermDto(
       value: '2025-2026-2',
@@ -515,7 +524,7 @@ class DemoCithubPlatform implements CithubPlatform {
   @override
   Future<bool> installUpdate() async => true;
   @override
-  Future<String> exportRuntimeLog() async => '/tmp/cithub-runtime.log';
+  Future<String> exportRuntimeLog() async => '/tmp/cithub-logs.zip';
   @override
   Future<bool> clearRuntimeLog() async => true;
   @override

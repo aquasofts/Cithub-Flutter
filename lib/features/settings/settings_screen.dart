@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/platform/cithub_platform.dart';
+import '../../core/logging/runtime_log.dart';
+import '../../core/utils/user_facing_error.dart';
 import '../../core/native/cithub_api.g.dart';
 import '../../core/settings/app_settings.dart';
 
@@ -552,10 +554,79 @@ class _UpdateSettingsScreenState extends ConsumerState<UpdateSettingsScreen> {
   );
 }
 
-class RuntimeLogScreen extends ConsumerWidget {
+class RuntimeLogScreen extends ConsumerStatefulWidget {
   const RuntimeLogScreen({super.key});
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Scaffold(
+  ConsumerState<RuntimeLogScreen> createState() => _RuntimeLogScreenState();
+}
+
+class _RuntimeLogScreenState extends ConsumerState<RuntimeLogScreen> {
+  bool _busy = false;
+
+  Future<void> _export() async {
+    setState(() => _busy = true);
+    try {
+      RuntimeLog.write(
+        'runtime',
+        'User requested full ZIP export; redaction=false',
+      );
+      await RuntimeLog.flush();
+      final path = await ref.read(cithubPlatformProvider).exportRuntimeLog();
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('完整日志 ZIP 已导出：$path')));
+      }
+    } catch (error, stack) {
+      RuntimeLog.write('log-export-error', '$error\n$stack');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('导出失败：${userFacingError(error)}')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _clear() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('清除全部日志？'),
+        content: const Text('本机保存的历史日志将被删除，已导出的 ZIP 不受影响。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('清除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await RuntimeLog.flush();
+      await ref.read(cithubPlatformProvider).clearRuntimeLog();
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('运行日志已清除')));
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(userFacingError(error))));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('运行日志')),
     body: ListView(
       padding: const EdgeInsets.all(16),
@@ -564,33 +635,25 @@ class RuntimeLogScreen extends ConsumerWidget {
           child: Padding(
             padding: EdgeInsets.all(20),
             child: Text(
-              '完整诊断日志仅保存在本机滚动文件中，绝不自动上传。日志可能包含账号和会话信息，请只在主动排障时导出并妥善传递。',
+              '应用诊断日志持续保存在本机，重启后保留，不自动删减或上传。导出包含所有已保存的历史日志，使用 ZIP 格式，不做脱敏；请求、响应、账号及会话等原始内容会完整保留。',
             ),
           ),
         ),
         const SizedBox(height: 16),
         FilledButton.icon(
-          onPressed: () async {
-            final path = await ref
-                .read(cithubPlatformProvider)
-                .exportRuntimeLog();
-            if (context.mounted) {
-              ScaffoldMessenger.of(context)
-                  .showSnackBar(SnackBar(content: Text('日志已导出：$path')));
-            }
-          },
-          icon: const Icon(Icons.ios_share),
-          label: const Text('导出完整日志'),
+          key: const Key('export-runtime-log'),
+          onPressed: _busy ? null : _export,
+          icon: _busy
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.folder_zip_outlined),
+          label: Text(_busy ? '处理中…' : '导出完整日志 ZIP（不脱敏）'),
         ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
-          onPressed: () async {
-            await ref.read(cithubPlatformProvider).clearRuntimeLog();
-            if (context.mounted) {
-              ScaffoldMessenger.of(context)
-                  .showSnackBar(const SnackBar(content: Text('运行日志已清除')));
-            }
-          },
+          onPressed: _busy ? null : _clear,
           icon: const Icon(Icons.delete_outline),
           label: const Text('清除日志'),
         ),

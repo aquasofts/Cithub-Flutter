@@ -51,7 +51,7 @@ public actor AcademicProtocolClient {
     ) {
         self.store = store
         self.logger = logger
-        self.transport = transport
+        self.transport = LoggingHTTPTransport(transport, logger: logger, source: "AcademicProtocolClient")
         self.cookies = CookieHeaderStore(store: store)
         self.automaticServerRouting = baseURL == nil
         let selected = baseURL ?? AcademicServerRouter.defaultBaseURL
@@ -76,8 +76,9 @@ public actor AcademicProtocolClient {
         let html = try await get("kscj/cjcx_query", message: "连接教务系统失败")
         if isLoginPage(html) { return nil }
         let terms = HTMLParser.options(in: html, selectName: "kksj")
-        guard !terms.isEmpty else {
-            throw CithubNativeError.invalidResponse("无法识别教务系统的学期列表，页面结构可能已更新")
+        if terms.isEmpty {
+            await logger.append(source: "academic-parser", message: "Missing grade terms html=\(html)")
+            guard isStudentPage(html) else { throw CithubNativeError.invalidResponse("无法识别教务系统页面，请导出完整日志以检查服务器返回内容") }
         }
         return terms
     }
@@ -140,7 +141,9 @@ public actor AcademicProtocolClient {
     public func loadSelectionTerms() async throws -> [CoreAcademicTerm] {
         let html = try await get("xkgl/xsxkjgcx", message: "加载选课结果查询条件失败")
         try requireSession(html)
-        return HTMLParser.options(in: html, selectName: "xnxqid")
+        let terms = HTMLParser.options(in: html, selectName: "xnxqid")
+        guard !terms.isEmpty else { throw CithubNativeError.invalidResponse("无法识别选课结果的学期列表，页面结构可能已更新") }
+        return terms
     }
 
     public func loadSelectionResults(term: String) async throws -> [CoreSelectedCourse] {
@@ -246,22 +249,25 @@ public actor AcademicProtocolClient {
         submit: Bool
     ) async throws -> Bool {
         guard !form.readOnly else { throw CithubNativeError.invalidInput("该评价已提交，不能再修改") }
-        let selected = Dictionary(uniqueKeysWithValues: answers.map { ($0.questionID, $0.optionID) })
-        guard form.questions.allSatisfy({ !(selected[$0.id] ?? "").isEmpty }) else {
+        let selected = Dictionary(answers.map { ($0.questionID, $0.optionID) }, uniquingKeysWith: { _, last in last })
+        guard !form.questions.isEmpty, form.questions.allSatisfy({ question in question.options.contains { $0.id == selected[question.id] } }) else {
             throw CithubNativeError.invalidInput("请完成每一项评价指标")
         }
-        var fields: [String: String] = [:]
-        form.hiddenFields.filter { $0.name != "issubmit" && $0.name != "sfxyt" }
-            .forEach { fields[$0.name] = $0.value }
-        form.questions.forEach { fields["pj0601id_\($0.id)"] = selected[$0.id] }
-        if let suggestionField = form.suggestionField { fields[suggestionField] = suggestion }
-        fields["issubmit"] = submit ? "1" : "0"
-        fields["sfxyt"] = "0"
-        let html = try await post(
-            try safePath(form.actionPath), form: fields,
-            message: submit ? "提交学生评价失败" : "保存学生评价失败"
-        )
-        try requireSession(html)
+        var fields = form.hiddenFields.filter { $0.name != "issubmit" && $0.name != "sfxyt" }
+            .map { ($0.name, $0.value) }
+        form.questions.forEach { fields.append(("pj0601id_\($0.id)", selected[$0.id]!)) }
+        if let suggestionField = form.suggestionField { fields.append((suggestionField, suggestion)) }
+        fields.append(("issubmit", submit ? "1" : "0"))
+        fields.append(("sfxyt", "0"))
+        let response = try await request(try safePath(form.actionPath), method: "POST", formPairs: fields)
+        guard (200...299).contains(response.status) else {
+            throw CithubNativeError.requestFailed("保存学生评价失败（HTTP \(response.status)）")
+        }
+        try requireSession(response.text)
+        if let alert = HTMLParser.firstCapture(#"alert\s*\(\s*['"]([^'"]+)['"]"#, in: response.text),
+           !alert.contains("成功") {
+            throw CithubNativeError.requestFailed(alert)
+        }
         return true
     }
 
@@ -269,6 +275,7 @@ public actor AcademicProtocolClient {
         var html = try await get("xskb/xskb_list.do", message: "加载理论课表失败")
         try requireSession(html)
         var parsed = try parseTimetable(html)
+        let currentTerm = parsed.dto.selectedTerm
         timetableSchemeID = parsed.schemeID.isEmpty ? timetableSchemeID : parsed.schemeID
         if let term, !term.isEmpty, term != parsed.dto.selectedTerm {
             html = try await post(
@@ -279,6 +286,7 @@ public actor AcademicProtocolClient {
                 ],
                 message: "加载理论课表失败"
             )
+            try requireSession(html)
             parsed = try parseTimetable(html)
         }
         let today = Self.dateFormatter.string(from: Date())
@@ -308,11 +316,19 @@ public actor AcademicProtocolClient {
                 (referenceWeek == nil || course.weekNumbers.isEmpty || course.weekNumbers.contains(referenceWeek!))
         }
         var result = parsed.dto
-        result.courses = homeTimetable?.1.isEmpty == false ? homeTimetable!.1 : expectedTodayCourses
+        if homeTimetable?.1.isEmpty == false, term == nil || term == currentTerm {
+            result.courses = parsed.dto.courses.filter { course in
+                !expectedTodayCourses.contains { $0.id == course.id }
+            } + homeTimetable!.1
+        }
         result.referenceDateISO = today
-        result.referenceWeek = referenceWeek
+        result.referenceWeek = term == nil || term == currentTerm ? referenceWeek : nil
         result.totalWeeks = totalWeeks
         return result
+    }
+
+    public func importBrowserSession(_ value: String) async {
+        await cookies.merge(["JSESSIONID=\(value); Path=/jsxsd"])
     }
 
     public func webPageURL(_ path: String) throws -> String {
@@ -370,7 +386,7 @@ public actor AcademicProtocolClient {
         return ParsedTimetable(
             dto: CoreTimetable(
                 terms: terms, selectedTerm: selected, periods: periods, courses: courses,
-                note: "", referenceDateISO: nil, referenceWeek: nil, totalWeeks: nil
+                note: rows.last.flatMap { HTMLParser.rowCells($0).count < 8 ? $0.text.replacingOccurrences(of: "备注：", with: "").replacingOccurrences(of: "备注:", with: "") : nil } ?? "", referenceDateISO: nil, referenceWeek: nil, totalWeeks: nil
             ),
             schemeID: scheme
         )
@@ -483,7 +499,9 @@ public actor AcademicProtocolClient {
         _ path: String,
         method: String = "GET",
         form: [String: String]? = nil,
-        followRedirects: Bool = true
+        followRedirects: Bool = true,
+        formPairs: [(String, String)]? = nil,
+        redirectCount: Int = 0
     ) async throws -> HTTPResponse {
         let normalized: String
         if path.hasPrefix(baseURL.absoluteString) {
@@ -499,15 +517,28 @@ public actor AcademicProtocolClient {
         let cookie = await cookies.header()
         if !cookie.isEmpty { headers["Cookie"] = cookie }
         var body = Data()
-        if let form {
+        if let formPairs {
+            headers["Content-Type"] = "application/x-www-form-urlencoded"
+            body = FormEncoding.encode(formPairs)
+        } else if let form {
             headers["Content-Type"] = "application/x-www-form-urlencoded"
             body = FormEncoding.encode(form)
         }
         let response = try await transport.perform(HTTPCall(
-            method: method, url: url, headers: headers, body: body, followRedirects: followRedirects
+            method: method, url: url, headers: headers, body: body, followRedirects: false
         ))
         if let setCookie = response.header("Set-Cookie") { await cookies.merge([setCookie]) }
         await logger.append(source: "academic", message: "\(method) /jsxsd/\(normalized) -> HTTP \(response.status)")
+        if followRedirects, (300...399).contains(response.status), let location = response.header("Location") {
+            guard redirectCount < 10, let next = URL(string: location, relativeTo: url)?.absoluteURL,
+                  next.host == baseURL.host, next.scheme == baseURL.scheme,
+                  next.path.hasPrefix(baseURL.path) else {
+                throw CithubNativeError.loginRequired("教务系统跳转到登录入口，请重新登录 WebVPN")
+            }
+            let preserveBody = response.status == 307 || response.status == 308
+            return try await request(next.absoluteString, method: preserveBody ? method : "GET",
+                form: preserveBody ? form : nil, formPairs: preserveBody ? formPairs : nil, redirectCount: redirectCount + 1)
+        }
         return response
     }
 
@@ -517,16 +548,28 @@ public actor AcademicProtocolClient {
         }
     }
 
+    private func isStudentPage(_ html: String) -> Bool {
+        html.contains("framework/xsMain.jsp") || html.contains("学生个人中心") ||
+            (html.contains("/jsxsd/") && html.contains("退出") && html.contains("学生"))
+    }
+
     private func isLoginPage(_ html: String) -> Bool {
         html.range(of: "LoginToXk", options: .caseInsensitive) != nil ||
         html.range(of: "verifycode.servlet", options: .caseInsensitive) != nil ||
         (html.range(of: "userAccount", options: .caseInsensitive) != nil &&
          html.range(of: "RANDOMCODE", options: .caseInsensitive) != nil) ||
-        (html.range(of: "browser-compatibility", options: .caseInsensitive) != nil &&
-         html.range(of: "WebVPN", options: .caseInsensitive) != nil)
+        (html.range(of: "WebVPN", options: .caseInsensitive) != nil &&
+         (html.range(of: "browser-compatibility", options: .caseInsensitive) != nil ||
+          (HTMLParser.elements("div", in: html).contains { $0.attribute("id") == "app" } && html.contains("/assets/"))))
     }
 
     private func safePath(_ path: String) throws -> String {
+        if let absolute = URL(string: path), absolute.host != nil {
+            guard absolute.host == baseURL.host, absolute.scheme == baseURL.scheme,
+                  absolute.path.hasPrefix(baseURL.path) else {
+                throw CithubNativeError.invalidInput("教务系统返回了无效页面地址")
+            }
+        }
         let value: String
         if let range = path.range(of: "/jsxsd/", options: .caseInsensitive) {
             value = String(path[range.upperBound...])

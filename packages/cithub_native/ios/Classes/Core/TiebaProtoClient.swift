@@ -87,7 +87,7 @@ public actor TiebaProtoClient {
         self.logger = logger
         self.baseURL = baseURL.absoluteString.hasSuffix("/") ? baseURL : URL(string: baseURL.absoluteString + "/")!
         self.identity = identity
-        self.transport = transport
+        self.transport = LoggingHTTPTransport(transport, logger: logger, source: "TiebaProtoClient")
     }
 
     public func forum(

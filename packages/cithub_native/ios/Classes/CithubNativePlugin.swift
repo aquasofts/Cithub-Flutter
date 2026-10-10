@@ -8,7 +8,7 @@ public final class CithubNativePlugin: NSObject, FlutterPlugin {
         let messenger = registrar.messenger()
         let store = KeychainSecretStore()
         let state = IOSSessionState()
-        let logger = IOSRuntimeLogStore()
+        let logger = IOSRuntimeLogStore.shared
         let events = IOSNativeEvents()
 
         WebVpnHostApiSetup.setUp(

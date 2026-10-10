@@ -48,6 +48,12 @@ internal class AndroidRuntimeLogApi(
     private val executor: Executor,
     private val mainHandler: Handler,
 ) : RuntimeLogHostApi {
+    override fun append(source: String, message: String, callback: (Result<Boolean>) -> Unit) =
+        runAsync(executor, mainHandler, callback) {
+            logs.append(source, message)
+            true
+        }
+
     override fun exportLog(callback: (Result<String>) -> Unit) =
         runAsync(executor, mainHandler, callback) {
             logs.append("runtime", "User exported runtime log")
@@ -55,7 +61,7 @@ internal class AndroidRuntimeLogApi(
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             val share = Intent.createChooser(
                 Intent(Intent.ACTION_SEND)
-                    .setType("text/plain")
+                    .setType("application/zip")
                     .putExtra(Intent.EXTRA_STREAM, uri)
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
                 "导出 Cithub Flutter 运行日志",

@@ -6,7 +6,7 @@ public actor TiebaWebClient {
 
     public init(logger: any RuntimeLogger, transport: any HTTPTransport = URLSessionTransport()) {
         self.logger = logger
-        self.transport = transport
+        self.transport = LoggingHTTPTransport(transport, logger: logger, source: "TiebaWebClient")
     }
 
     public func profile(cookie: String) async throws -> (CoreTiebaAccount, String) {

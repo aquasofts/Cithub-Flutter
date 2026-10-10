@@ -287,10 +287,12 @@ internal class TiebaWebClient(private val logs: RuntimeLogStore) {
 
     private fun get(url: String, cookie: String): String {
         val connection = open(url, "GET", cookie)
+        logs.append("tieba", "REQUEST GET $url headers=${connection.requestProperties}")
         val status = connection.responseCode
         val stream = if (status in 200..299) connection.inputStream else connection.errorStream
         val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-        logs.append("tieba", "GET ${URL(url).path} -> HTTP $status")
+        logs.append("tieba", "RESPONSE GET $url status=$status headers=${connection.headerFields} body=$body")
+        connection.disconnect()
         check(status in 200..299) { "贴吧请求失败（HTTP $status）" }
         return body
     }
@@ -299,6 +301,7 @@ internal class TiebaWebClient(private val logs: RuntimeLogStore) {
         val connection = open(url, "POST", cookie)
         connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
         connection.setRequestProperty("Referer", referer)
+        logs.append("tieba", "REQUEST POST $url headers=${connection.requestProperties} form=$form")
         connection.doOutput = true
         connection.outputStream.use { output ->
             output.write(form.entries.joinToString("&") { "${encode(it.key)}=${encode(it.value)}" }.toByteArray())
@@ -306,7 +309,8 @@ internal class TiebaWebClient(private val logs: RuntimeLogStore) {
         val status = connection.responseCode
         val stream = if (status in 200..299) connection.inputStream else connection.errorStream
         val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-        logs.append("tieba", "POST ${URL(url).path} -> HTTP $status")
+        logs.append("tieba", "RESPONSE POST $url status=$status headers=${connection.headerFields} body=$body")
+        connection.disconnect()
         check(status in 200..299) { "贴吧请求失败（HTTP $status）" }
         return JSONObject(body)
     }

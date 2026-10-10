@@ -20,12 +20,33 @@ import java.util.concurrent.Executors
 
 internal object NativeApiBootstrap {
     private var executor: ExecutorService? = null
+    internal var logger: RuntimeLogStore? = null
+    private var logcat: Process? = null
+    private var crashHandlerInstalled = false
 
     @Synchronized
     fun register(context: Context, messenger: BinaryMessenger) {
         val appContext = context.applicationContext
         val secureStore = SecureStore(appContext)
         val logs = RuntimeLogStore(appContext)
+        logger = logs
+        if (!crashHandlerInstalled) {
+            val previous = Thread.getDefaultUncaughtExceptionHandler()
+            Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+                runCatching { logger?.append("native-uncaught", "thread=${thread.name}\n${error.stackTraceToString()}") }
+                previous?.uncaughtException(thread, error)
+            }
+            crashHandlerInstalled = true
+        }
+        logcat?.destroy()
+        runCatching {
+            val process = ProcessBuilder("logcat", "-v", "threadtime", "--pid=${android.os.Process.myPid()}").redirectErrorStream(true).start()
+            logcat = process
+            Thread({
+                runCatching { process.inputStream.bufferedReader().useLines { lines -> lines.forEach { logs.append("android-logcat", it) } } }
+                    .onFailure { runCatching { logs.append("android-logcat-error", it.stackTraceToString()) } }
+            }, "cithub-logcat").apply { isDaemon = true; start() }
+        }.onFailure { logs.append("android-logcat-error", it.stackTraceToString()) }
         val executor = Executors.newCachedThreadPool()
         this.executor?.shutdownNow()
         this.executor = executor
@@ -52,6 +73,9 @@ internal object NativeApiBootstrap {
         SettingsHostApi.setUp(messenger, null)
         RuntimeLogHostApi.setUp(messenger, null)
         EventsStreamHandler.register(messenger, object : EventsStreamHandler() {})
+        logger?.append("runtime", "Native APIs unregistered")
+        logcat?.destroy()
+        logcat = null
         executor?.shutdownNow()
         executor = null
     }
@@ -69,6 +93,7 @@ internal class NativeEvents(private val mainHandler: Handler) : EventsStreamHand
     }
 
     fun emit(source: String, stage: String, message: String? = null, progress: Double? = null) {
+        NativeApiBootstrap.logger?.append(source, "EVENT $stage progress=$progress $message")
         val event = NativeEventDto(source, stage, message, progress, System.currentTimeMillis())
         mainHandler.post { sink?.success(event) }
     }
@@ -92,6 +117,7 @@ internal fun <T> runAsync(
         val result = try {
             Result.success(block())
         } catch (error: Throwable) {
+            runCatching { NativeApiBootstrap.logger?.append("native-error", error.stackTraceToString()) }
             Result.failure(error.toFlutterError())
         }
         mainHandler.post { callback(result) }

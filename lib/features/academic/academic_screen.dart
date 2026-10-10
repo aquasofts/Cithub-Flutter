@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../core/native/cithub_api.g.dart';
+import '../../core/logging/runtime_log.dart';
 import '../../core/platform/cithub_platform.dart';
 import '../../core/utils/user_facing_error.dart';
 
@@ -98,6 +99,7 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen>
     );
     if (ids == null || !mounted) return;
     final ordered = ids
+        .toSet()
         .map(
           (id) =>
               academicFeatures.where((feature) => feature.id == id).firstOrNull,
@@ -142,6 +144,7 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen>
     Future<WebVpnSessionDto> value, {
     Future<WebVpnSessionDto> Function()? recoverOnError,
   }) {
+    if (!mounted) return;
     setState(() {
       _sessionError = null;
       _session = _trackSession(
@@ -235,8 +238,12 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen>
               );
             }
             return _AcademicSessionSliver(
+              key: ValueKey(session.user?.username),
               webVpnSession: session,
               features: _features,
+              onWebVpnRefresh: () => _setSession(
+                ref.read(cithubPlatformProvider).initializeWebVpn(),
+              ),
               onWebVpnLogout: () =>
                   _setSession(ref.read(cithubPlatformProvider).logoutWebVpn()),
             );
@@ -249,14 +256,17 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen>
 
 class _AcademicSessionSliver extends ConsumerStatefulWidget {
   const _AcademicSessionSliver({
+    super.key,
     required this.webVpnSession,
     required this.features,
     required this.onWebVpnLogout,
+    required this.onWebVpnRefresh,
   });
 
   final WebVpnSessionDto webVpnSession;
   final List<AcademicFeature> features;
   final VoidCallback onWebVpnLogout;
+  final VoidCallback onWebVpnRefresh;
 
   @override
   ConsumerState<_AcademicSessionSliver> createState() =>
@@ -311,6 +321,7 @@ class _AcademicSessionSliverState
     Future<WebVpnSessionDto> value, {
     Future<WebVpnSessionDto> Function()? recoverOnError,
   }) {
+    if (!mounted) return;
     setState(() {
       _sessionError = null;
       _session = _trackSession(
@@ -329,6 +340,8 @@ class _AcademicSessionSliverState
         return SliverFillRemaining(
           child: _AcademicError(
             error: snapshot.error,
+            onReconnect: widget.onWebVpnRefresh,
+            webPath: 'framework/xsMain.jsp',
             onRetry: () => _set(
               ref
                   .read(cithubPlatformProvider)
@@ -353,6 +366,16 @@ class _AcademicSessionSliverState
               session: academic,
               error: _sessionError,
               loading: snapshot.connectionState == ConnectionState.waiting,
+              onSelectSavedAccount: (username) => _set(
+                ref
+                    .read(cithubPlatformProvider)
+                    .selectSavedAcademicAccount(username),
+              ),
+              onForgetSavedAccount: (username) => _set(
+                ref
+                    .read(cithubPlatformProvider)
+                    .forgetSavedAcademicAccount(username),
+              ),
               title: '登录教务系统',
               description: '教务账号独立登录，密码只在本机加密保存。',
               usernameLabel: '教务系统账号',
@@ -426,8 +449,16 @@ class _AcademicSessionSliverState
             sliver: SliverList.separated(
               itemCount: widget.features.length,
               separatorBuilder: (_, _) => const SizedBox(height: 12),
-              itemBuilder: (_, index) =>
-                  _AcademicFeatureCard(feature: widget.features[index]),
+              itemBuilder: (_, index) => _AcademicFeatureCard(
+                feature: widget.features[index],
+                onReturn: () => _set(
+                  ref
+                      .read(cithubPlatformProvider)
+                      .initializeAcademic(
+                        widget.webVpnSession.user?.username ?? '',
+                      ),
+                ),
+              ),
             ),
           ),
         ],
@@ -771,14 +802,15 @@ class _WebVpnLoginPanelState extends State<WebVpnLoginPanel> {
 }
 
 class _AcademicFeatureCard extends StatelessWidget {
-  const _AcademicFeatureCard({required this.feature});
+  const _AcademicFeatureCard({required this.feature, this.onReturn});
   final AcademicFeature feature;
+  final VoidCallback? onReturn;
 
   @override
   Widget build(BuildContext context) => Card(
     child: InkWell(
       borderRadius: BorderRadius.circular(20),
-      onTap: () {
+      onTap: () async {
         final page = switch (feature.id) {
           'grades' => const GradesScreen(),
           'timetable' => const TimetableScreen(),
@@ -786,7 +818,9 @@ class _AcademicFeatureCard extends StatelessWidget {
           'evaluation' => const EvaluationScreen(),
           _ => AcademicWebScreen(feature: feature),
         };
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+        await Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => page));
+        onReturn?.call();
       },
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -839,7 +873,7 @@ class GradesScreen extends ConsumerStatefulWidget {
 }
 
 class _GradesScreenState extends ConsumerState<GradesScreen> {
-  late final Future<List<AcademicTermDto>> _terms;
+  late Future<List<AcademicTermDto>> _terms;
   String? _selected;
   bool _bestOnly = false;
   Future<List<CourseGradeDto>>? _items;
@@ -861,127 +895,188 @@ class _GradesScreenState extends ConsumerState<GradesScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('成绩查询')),
+    appBar: AppBar(
+      title: const Text('成绩查询'),
+      actions: const [
+        _OriginalAcademicButton(title: '成绩查询', path: 'kscj/cjcx_query'),
+      ],
+    ),
     body: FutureBuilder<List<AcademicTermDto>>(
       future: _terms,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return Center(child: Text('学期加载失败：${snapshot.error}'));
+          return _AcademicError(
+            error: snapshot.error,
+            webPath: 'kscj/cjcx_query',
+            onRetry: () => setState(() {
+              _terms = ref.read(cithubPlatformProvider).loadAcademicTerms();
+            }),
+          );
         }
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
         final terms = snapshot.requireData;
-        if (terms.isEmpty) return const Center(child: Text('教务系统未返回学期'));
+        if (terms.isEmpty) {
+          return _AcademicError(
+            error: StateError('教务系统未返回学期，可使用原始页面查询'),
+            webPath: 'kscj/cjcx_query',
+            onRetry: () => setState(() {
+              _terms = ref.read(cithubPlatformProvider).loadAcademicTerms();
+            }),
+          );
+        }
         _selected ??=
             terms.where((term) => term.selected).firstOrNull?.value ??
             terms.first.value;
         _items ??= ref
             .read(cithubPlatformProvider)
             .loadGrades(_selected!, bestOnly: _bestOnly);
-        return Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.school_outlined,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '成绩查询',
-                                  style: Theme.of(context).textTheme.titleLarge,
-                                ),
-                                Text(
-                                  '按学期筛选课程成绩',
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                ),
-                              ],
+        return CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.school_outlined,
+                              color: Theme.of(context).colorScheme.primary,
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      LayoutBuilder(
-                        builder: (context, constraints) => DropdownMenu<String>(
-                          width: constraints.maxWidth,
-                          initialSelection: _selected,
-                          label: const Text('学年学期'),
-                          dropdownMenuEntries: terms
-                              .map(
-                                (term) => DropdownMenuEntry(
-                                  value: term.value,
-                                  label: term.label,
-                                ),
-                              )
-                              .toList(),
-                          onSelected: (value) {
-                            if (value != null) {
-                              setState(() => _selected = value);
-                            }
-                          },
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '成绩查询',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleLarge,
+                                  ),
+                                  Text(
+                                    '按学期筛选课程成绩',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      CheckboxListTile(
-                        value: _bestOnly,
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        controlAffinity: ListTileControlAffinity.leading,
-                        title: const Text('同一课程只显示最好成绩'),
-                        onChanged: (value) =>
-                            setState(() => _bestOnly = value ?? false),
-                      ),
-                      const SizedBox(height: 8),
-                      FilledButton.icon(
-                        onPressed: _load,
-                        icon: const Icon(Icons.search),
-                        label: const Text('查询成绩'),
-                      ),
-                    ],
+                        const SizedBox(height: 16),
+                        LayoutBuilder(
+                          builder: (context, constraints) =>
+                              DropdownMenu<String>(
+                                width: constraints.maxWidth,
+                                initialSelection: _selected,
+                                label: const Text('学年学期'),
+                                dropdownMenuEntries: terms
+                                    .map(
+                                      (term) => DropdownMenuEntry(
+                                        value: term.value,
+                                        label: term.label,
+                                      ),
+                                    )
+                                    .toList(),
+                                onSelected: (value) {
+                                  if (value != null) {
+                                    setState(() => _selected = value);
+                                  }
+                                },
+                              ),
+                        ),
+                        const SizedBox(height: 8),
+                        CheckboxListTile(
+                          value: _bestOnly,
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          title: const Text('同一课程只显示最好成绩'),
+                          onChanged: (value) =>
+                              setState(() => _bestOnly = value ?? false),
+                        ),
+                        const SizedBox(height: 8),
+                        FilledButton.icon(
+                          onPressed: _load,
+                          icon: const Icon(Icons.search),
+                          label: const Text('查询成绩'),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-            Expanded(
-              child: FutureBuilder<List<CourseGradeDto>>(
-                future: _items,
-                builder: (context, items) {
-                  if (items.hasError) {
-                    return Center(child: Text('加载失败：${items.error}'));
-                  }
-                  if (!items.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (items.requireData.isEmpty) {
-                    return const Center(child: Text('该学期暂无记录'));
-                  }
-                  return ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
-                    itemCount: items.requireData.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 12),
-                    itemBuilder: (_, index) =>
-                        _GradeCard(item: items.requireData[index]),
-                  );
-                },
+            _AcademicResultsSliver<CourseGradeDto>(
+              future: _items!,
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
+              errorBuilder: (error) => _AcademicError(
+                error: error,
+                webPath: 'kscj/cjcx_query',
+                onRetry: _load,
               ),
+              itemBuilder: (item) => _GradeCard(item: item),
             ),
           ],
         );
       },
     ),
+  );
+}
+
+class _AcademicResultsSliver<T> extends StatelessWidget {
+  const _AcademicResultsSliver({
+    required this.future,
+    required this.padding,
+    required this.errorBuilder,
+    required this.itemBuilder,
+  });
+
+  final Future<List<T>> future;
+  final EdgeInsets padding;
+  final Widget Function(Object?) errorBuilder;
+  final Widget Function(T) itemBuilder;
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<List<T>>(
+    future: future,
+    builder: (context, snapshot) {
+      if (snapshot.hasError) {
+        return SliverFillRemaining(
+          hasScrollBody: false,
+          child: errorBuilder(snapshot.error),
+        );
+      }
+      if (!snapshot.hasData) {
+        return const SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(child: CircularProgressIndicator()),
+        );
+      }
+      final items = snapshot.requireData;
+      if (items.isEmpty) {
+        return const SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(child: Text('该学期暂无记录')),
+        );
+      }
+      return SliverPadding(
+        padding: padding,
+        sliver: SliverList.separated(
+          itemCount: items.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 12),
+          itemBuilder: (_, index) => itemBuilder(items[index]),
+        ),
+      );
+    },
   );
 }
 
@@ -1038,6 +1133,42 @@ class _GradeCard extends StatelessWidget {
               const SizedBox(height: 12),
               Text(details, style: Theme.of(context).textTheme.bodyMedium),
             ],
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: const Text('完整成绩明细'),
+              children: [
+                for (final entry in <String, String>{
+                  '序号': item.sequence,
+                  '学期': item.semester,
+                  '课程代码': item.courseCode,
+                  '课程名称': item.courseName,
+                  '分组名': item.groupName,
+                  '成绩': item.score,
+                  '成绩标识': item.scoreMark,
+                  '学分': item.credit,
+                  '总学时': item.totalHours,
+                  '绩点': item.gradePoint,
+                  '通选课': item.generalElective,
+                  '原始成绩': item.originalScore,
+                  '说明': item.scoreDescription,
+                  '备注': item.note,
+                  '重修学期': item.retakeSemester,
+                  '考核方式': item.assessmentMethod,
+                  '考试性质': item.examType,
+                  '课程属性': item.courseAttribute,
+                  '课程性质': item.courseNature,
+                  '课程类别': item.courseCategory,
+                }.entries)
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(entry.key),
+                    subtitle: SelectableText(
+                      entry.value.isEmpty ? '—' : entry.value,
+                    ),
+                  ),
+              ],
+            ),
           ],
         ),
       ),
@@ -1048,18 +1179,19 @@ class _GradeCard extends StatelessWidget {
 class SelectionResultsScreen extends ConsumerWidget {
   const SelectionResultsScreen({super.key});
   @override
-  Widget build(BuildContext context, WidgetRef ref) =>
-      _TermAcademicListPage<SelectedCourseDto>(
-        title: '选课结果',
-        load: (term) =>
-            ref.read(cithubPlatformProvider).loadSelectionResults(term),
-        builder: (item) => ListTile(
-          title: Text(item.courseName),
-          subtitle: Text(
-            '${item.teacher} · ${item.credit} 学分 · ${item.courseNature}',
-          ),
-        ),
-      );
+  Widget build(
+    BuildContext context,
+    WidgetRef ref,
+  ) => _TermAcademicListPage<SelectedCourseDto>(
+    title: '选课结果',
+    load: (term) => ref.read(cithubPlatformProvider).loadSelectionResults(term),
+    builder: (item) => ListTile(
+      title: Text(item.courseName),
+      subtitle: Text(
+        '${item.courseCode} · ${item.teacher}\n学分 ${item.credit} · 学时 ${item.totalHours}\n${item.courseAttribute} · ${item.courseNature}',
+      ),
+    ),
+  );
 }
 
 class _TermAcademicListPage<T> extends ConsumerStatefulWidget {
@@ -1079,14 +1211,14 @@ class _TermAcademicListPage<T> extends ConsumerStatefulWidget {
 
 class _TermAcademicListPageState<T>
     extends ConsumerState<_TermAcademicListPage<T>> {
-  late final Future<List<AcademicTermDto>> _terms;
+  late Future<List<AcademicTermDto>> _terms;
   String? _selected;
   Future<List<T>>? _items;
 
   @override
   void initState() {
     super.initState();
-    _terms = ref.read(cithubPlatformProvider).loadAcademicTerms();
+    _terms = ref.read(cithubPlatformProvider).loadSelectionTerms();
   }
 
   void _select(String value) {
@@ -1098,12 +1230,27 @@ class _TermAcademicListPageState<T>
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(widget.title)),
+    appBar: AppBar(
+      title: Text(widget.title),
+      actions: [
+        const _OriginalAcademicButton(title: '选课结果', path: 'xkgl/xsxkjgcx'),
+        IconButton(
+          tooltip: '刷新',
+          onPressed: _selected == null ? null : () => _select(_selected!),
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
+    ),
     body: FutureBuilder<List<AcademicTermDto>>(
       future: _terms,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return Center(child: Text('学期加载失败：${snapshot.error}'));
+          return _AcademicError(
+            error: snapshot.error,
+            onRetry: () => setState(() {
+              _terms = ref.read(cithubPlatformProvider).loadSelectionTerms();
+            }),
+          );
         }
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
@@ -1114,56 +1261,44 @@ class _TermAcademicListPageState<T>
             terms.where((term) => term.selected).firstOrNull?.value ??
             terms.first.value;
         _items ??= widget.load(_selected!);
-        return Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) => DropdownMenu<String>(
-                      width: constraints.maxWidth,
-                      initialSelection: _selected,
-                      label: const Text('学期'),
-                      dropdownMenuEntries: terms
-                          .map(
-                            (term) => DropdownMenuEntry(
-                              value: term.value,
-                              label: term.label,
-                            ),
-                          )
-                          .toList(),
-                      onSelected: (value) {
-                        if (value != null) _select(value);
-                      },
+        return CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) => DropdownMenu<String>(
+                        width: constraints.maxWidth,
+                        initialSelection: _selected,
+                        label: const Text('学期'),
+                        dropdownMenuEntries: terms
+                            .map(
+                              (term) => DropdownMenuEntry(
+                                value: term.value,
+                                label: term.label,
+                              ),
+                            )
+                            .toList(),
+                        onSelected: (value) {
+                          if (value != null) _select(value);
+                        },
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-            Expanded(
-              child: FutureBuilder<List<T>>(
-                future: _items,
-                builder: (context, items) {
-                  if (items.hasError) {
-                    return Center(child: Text('加载失败：${items.error}'));
-                  }
-                  if (!items.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (items.requireData.isEmpty) {
-                    return const Center(child: Text('该学期暂无记录'));
-                  }
-                  return ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-                    itemCount: items.requireData.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 12),
-                    itemBuilder: (_, index) =>
-                        Card(child: widget.builder(items.requireData[index])),
-                  );
-                },
+            _AcademicResultsSliver<T>(
+              future: _items!,
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+              errorBuilder: (error) => _AcademicError(
+                error: error,
+                onRetry: () => _select(_selected!),
               ),
+              itemBuilder: (item) => Card(child: widget.builder(item)),
             ),
           ],
         );
@@ -1175,21 +1310,27 @@ class _TermAcademicListPageState<T>
 class EvaluationScreen extends ConsumerWidget {
   const EvaluationScreen({super.key});
   @override
-  Widget build(
-    BuildContext context,
-    WidgetRef ref,
-  ) => _AcademicListPage<EvaluationBatchDto>(
-    title: '学生评价',
-    future: ref.read(cithubPlatformProvider).loadEvaluationBatches(),
-    builder: (item) => ListTile(
-      title: Text(item.name),
-      subtitle: Text('${item.semester} · ${item.startDate} 至 ${item.endDate}'),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => EvaluationCoursesScreen(batch: item)),
-      ),
-    ),
-  );
+  Widget build(BuildContext context, WidgetRef ref) =>
+      _AcademicListPage<EvaluationBatchDto>(
+        title: '学生评价',
+        webPath: 'xspj/xspj_find.do',
+        load: () => ref.read(cithubPlatformProvider).loadEvaluationBatches(),
+        builder: (item, reload) => ListTile(
+          title: Text(item.name),
+          subtitle: Text(
+            '${item.semester} · ${item.startDate} 至 ${item.endDate}',
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () async {
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => EvaluationCoursesScreen(batch: item),
+              ),
+            );
+            if (context.mounted) reload();
+          },
+        ),
+      );
 }
 
 class EvaluationCoursesScreen extends ConsumerWidget {
@@ -1200,10 +1341,11 @@ class EvaluationCoursesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) =>
       _AcademicListPage<EvaluationCourseDto>(
         title: batch.name,
-        future: ref
+        webPath: batch.courseListPath,
+        load: () => ref
             .read(cithubPlatformProvider)
             .loadEvaluationCourses(batch.courseListPath),
-        builder: (item) => ListTile(
+        builder: (item, reload) => ListTile(
           title: Text(item.courseName),
           subtitle: Text(
             '${item.teacher} · ${item.category} · ${item.teachingHours} 学时',
@@ -1222,11 +1364,14 @@ class EvaluationCoursesScreen extends ConsumerWidget {
               const Icon(Icons.chevron_right),
             ],
           ),
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => EvaluationFormScreen(course: item),
-            ),
-          ),
+          onTap: () async {
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => EvaluationFormScreen(course: item),
+              ),
+            );
+            if (context.mounted) reload();
+          },
         ),
       );
 }
@@ -1241,7 +1386,7 @@ class EvaluationFormScreen extends ConsumerStatefulWidget {
 }
 
 class _EvaluationFormScreenState extends ConsumerState<EvaluationFormScreen> {
-  late final Future<EvaluationFormDto> _future;
+  late Future<EvaluationFormDto> _future;
   final _answers = <String, String>{};
   final _suggestion = TextEditingController();
   bool _initialized = false;
@@ -1299,7 +1444,7 @@ class _EvaluationFormScreenState extends ConsumerState<EvaluationFormScreen> {
     }
     setState(() => _saving = true);
     try {
-      await ref
+      final saved = await ref
           .read(cithubPlatformProvider)
           .saveEvaluation(
             form,
@@ -1314,6 +1459,7 @@ class _EvaluationFormScreenState extends ConsumerState<EvaluationFormScreen> {
             _suggestion.text,
             submit: submit,
           );
+      if (!saved) throw StateError('教务系统未确认保存成功');
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(submit ? '评价已提交' : '评价草稿已保存')));
@@ -1321,7 +1467,7 @@ class _EvaluationFormScreenState extends ConsumerState<EvaluationFormScreen> {
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('保存失败：$error')));
+            .showSnackBar(SnackBar(content: Text(userFacingError(error))));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -1335,7 +1481,14 @@ class _EvaluationFormScreenState extends ConsumerState<EvaluationFormScreen> {
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return Center(child: Text('评价表加载失败：${snapshot.error}'));
+          return _AcademicError(
+            error: snapshot.error,
+            onRetry: () => setState(() {
+              _future = ref
+                  .read(cithubPlatformProvider)
+                  .loadEvaluationForm(widget.course.formPath);
+            }),
+          );
         }
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
@@ -1447,6 +1600,10 @@ class TimetableScreen extends ConsumerStatefulWidget {
 
 class _TimetableScreenState extends ConsumerState<TimetableScreen> {
   late Future<TimetableDto> _timetable;
+  String? _term;
+  int? _week;
+  int? _day;
+  bool _weekInitialized = false;
 
   @override
   void initState() {
@@ -1455,107 +1612,519 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
   }
 
   void _reload() => setState(() {
-    _timetable = ref.read(cithubPlatformProvider).loadTimetable();
+    _timetable = ref.read(cithubPlatformProvider).loadTimetable(_term);
   });
+
+  DateTime? _dateForDay(TimetableDto data, int day) {
+    final reference = DateTime.tryParse(data.referenceDateIso ?? '');
+    final referenceWeek = data.referenceWeek;
+    if (reference == null || referenceWeek == null || _week == null) {
+      return null;
+    }
+    // Use calendar dates so week changes remain correct across DST boundaries.
+    return DateTime(
+      reference.year,
+      reference.month,
+      reference.day + (_week! - referenceWeek) * 7 + day - reference.weekday,
+    );
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const Text('今日课表'),
-      actions: [IconButton(onPressed: _reload, icon: const Icon(Icons.refresh))],
+      title: const Text('学期理论课表'),
+      actions: const [
+        _OriginalAcademicButton(title: '我的课表', path: 'xskb/xskb_list.do'),
+      ],
     ),
     body: FutureBuilder<TimetableDto>(
       future: _timetable,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return Center(
-            child: FilledButton.icon(
-              onPressed: _reload,
-              icon: const Icon(Icons.refresh),
-              label: const Text('加载失败，重试'),
-            ),
+          return _AcademicError(
+            error: snapshot.error,
+            webPath: 'xskb/xskb_list.do',
+            onRetry: _reload,
           );
         }
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
         final data = snapshot.requireData;
-        final date = DateTime.tryParse(data.referenceDateIso ?? '');
-        final weekday = date?.weekday ?? DateTime.now().weekday;
-        final courses = data.courses.where((course) {
-          final activeThisWeek = data.referenceWeek == null ||
-              course.weekNumbers.isEmpty ||
-              course.weekNumbers.contains(data.referenceWeek);
-          return course.dayOfWeek == weekday && activeThisWeek;
-        }).toList()
-          ..sort((a, b) => a.startSection.compareTo(b.startSection));
-        final weekLabel = data.referenceWeek == null
-            ? '按首页日期加载'
-            : '第 ${data.referenceWeek} 周${data.totalWeeks == null ? '' : ' / ${data.totalWeeks} 周'}';
-        if (courses.isEmpty) {
-          return Center(
-            child: Text(
-              '$weekLabel\n今天没有课程',
-              textAlign: TextAlign.center,
-            ),
-          );
+        final reference = DateTime.tryParse(data.referenceDateIso ?? '');
+        _day ??= reference?.weekday ?? DateTime.now().weekday;
+        if (!_weekInitialized) {
+          _week = data.referenceWeek;
+          _weekInitialized = true;
         }
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-          itemCount: courses.length + 1,
-          separatorBuilder: (_, _) => const SizedBox(height: 10),
-          itemBuilder: (_, index) {
-            if (index == 0) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 2),
-                child: Text(weekLabel, style: Theme.of(context).textTheme.titleSmall),
-              );
-            }
-            final item = courses[index - 1];
-            return Card(
-              child: ListTile(
-                leading: CircleAvatar(child: Text('${item.startSection}-${item.endSection}')),
-                title: Text(item.name),
-                subtitle: Text(
-                  '${item.weeks}\n${item.teacher} · ${item.location}',
+        final maxWeek = [
+          data.totalWeeks ?? 0,
+          ...data.courses.expand((c) => c.weekNumbers),
+        ].fold<int>(20, (a, b) => a > b ? a : b);
+        final courses =
+            data.courses
+                .where(
+                  (course) =>
+                      (_day == 0 || course.dayOfWeek == _day) &&
+                      (_week == null ||
+                          course.weekNumbers.isEmpty ||
+                          course.weekNumbers.contains(_week)),
+                )
+                .toList()
+              ..sort((a, b) {
+                final day = a.dayOfWeek.compareTo(b.dayOfWeek);
+                return day == 0
+                    ? a.startSection.compareTo(b.startSection)
+                    : day;
+              });
+        final days = _day == 0
+            ? [for (var day = 1; day <= 7; day++) day]
+            : [_day!];
+        final selectedDate = _day == 0 ? null : _dateForDay(data, _day!);
+        final theme = Theme.of(context);
+        final scheme = theme.colorScheme;
+        return CustomScrollView(
+          key: const PageStorageKey('timetable-scroll'),
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+              sliver: SliverToBoxAdapter(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        if (data.terms.isNotEmpty)
+                          Expanded(
+                            child: _TimetableDropdown<String>(
+                              label: '学年学期',
+                              value: data.selectedTerm,
+                              entries: data.terms
+                                  .map(
+                                    (term) => DropdownMenuEntry(
+                                      value: term.value,
+                                      label: term.label,
+                                    ),
+                                  )
+                                  .toList(),
+                              onSelected: (value) {
+                                if (value == null) return;
+                                _term = value;
+                                _weekInitialized = false;
+                                _reload();
+                              },
+                            ),
+                          )
+                        else
+                          const Expanded(child: Text('教务系统未返回学期')),
+                        const SizedBox(width: 12),
+                        IconButton(
+                          tooltip: '刷新课表',
+                          onPressed: _reload,
+                          icon: const Icon(Icons.refresh),
+                          iconSize: 28,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _TimetableDropdown<int>(
+                            label: '周次',
+                            value: _week ?? 0,
+                            entries: [
+                              const DropdownMenuEntry(value: 0, label: '全部周次'),
+                              for (var week = 1; week <= maxWeek; week++)
+                                DropdownMenuEntry(
+                                  value: week,
+                                  label: '第 $week 周',
+                                ),
+                            ],
+                            onSelected: (value) {
+                              if (value != null) {
+                                setState(
+                                  () => _week = value == 0 ? null : value,
+                                );
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _TimetableDropdown<int>(
+                            label: '星期',
+                            value: _day,
+                            entries: [
+                              const DropdownMenuEntry(value: 0, label: '整周课表'),
+                              for (var day = 1; day <= 7; day++)
+                                DropdownMenuEntry(
+                                  value: day,
+                                  label: '周${'一二三四五六日'[day - 1]}',
+                                ),
+                            ],
+                            onSelected: (value) {
+                              if (value != null) setState(() => _day = value);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: scheme.outlineVariant),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            selectedDate == null
+                                ? (_day == 0
+                                      ? '整周课表'
+                                      : _timetableDayLabel(_day!))
+                                : '${selectedDate.month}月${selectedDate.day}日',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${_week == null ? '全部周次' : '第 $_week 周'} · ${_day == 0 ? '星期一至星期日' : _timetableDayLabel(_day!)}',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (data.note.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Text(
+                          data.note,
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ),
+                  ],
                 ),
-                isThreeLine: true,
               ),
-            );
-          },
+            ),
+            for (final day in days) ...[
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                sliver: SliverToBoxAdapter(
+                  child: _TimetableDayHeader(
+                    day: day,
+                    date: _dateForDay(data, day),
+                    count: courses
+                        .where((course) => course.dayOfWeek == day)
+                        .length,
+                  ),
+                ),
+              ),
+              if (!courses.any((course) => course.dayOfWeek == day))
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  sliver: SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: Text('当天暂无课程', style: theme.textTheme.bodyLarge),
+                      ),
+                    ),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  sliver: SliverList.separated(
+                    itemCount: courses
+                        .where((course) => course.dayOfWeek == day)
+                        .length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
+                    itemBuilder: (_, index) {
+                      final course = courses
+                          .where((course) => course.dayOfWeek == day)
+                          .elementAt(index);
+                      return _TimetableCourseCard(
+                        course: course,
+                        period: data.periods
+                            .where(
+                              (period) => period.index == course.periodIndex,
+                            )
+                            .firstOrNull,
+                        showWeeks: _week == null,
+                      );
+                    },
+                  ),
+                ),
+            ],
+            const SliverToBoxAdapter(child: SizedBox(height: 8)),
+          ],
         );
       },
     ),
   );
 }
 
-class _AcademicListPage<T> extends StatelessWidget {
+String _timetableDayLabel(int day) => '星期${'一二三四五六日'[day - 1]}';
+
+class _TimetableDropdown<T> extends StatelessWidget {
+  const _TimetableDropdown({
+    required this.label,
+    required this.value,
+    required this.entries,
+    required this.onSelected,
+  });
+
+  final String label;
+  final T? value;
+  final List<DropdownMenuEntry<T>> entries;
+  final ValueChanged<T?> onSelected;
+
+  @override
+  Widget build(BuildContext context) => DropdownMenu<T>(
+    key: ValueKey('$label:$value'),
+    expandedInsets: EdgeInsets.zero,
+    initialSelection: value,
+    label: Text(label),
+    requestFocusOnTap: false,
+    menuHeight: 320,
+    inputDecorationTheme: InputDecorationTheme(
+      filled: false,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(24),
+        borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
+      ),
+    ),
+    dropdownMenuEntries: entries,
+    onSelected: onSelected,
+  );
+}
+
+class _TimetableDayHeader extends StatelessWidget {
+  const _TimetableDayHeader({
+    required this.day,
+    required this.date,
+    required this.count,
+  });
+  final int day;
+  final DateTime? date;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _timetableDayLabel(day),
+          style: theme.textTheme.headlineMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            if (date != null)
+              Text(
+                '${date!.month}月${date!.day}日',
+                style: theme.textTheme.bodyLarge,
+              ),
+            const Spacer(),
+            Text('$count 门课程', style: theme.textTheme.bodyLarge),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _TimetableCourseCard extends StatelessWidget {
+  const _TimetableCourseCard({
+    required this.course,
+    required this.period,
+    required this.showWeeks,
+  });
+  final TimetableCourseDto course;
+  final TimetablePeriodDto? period;
+  final bool showWeeks;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    const colors = [
+      Color(0xff4b5fba),
+      Color(0xff628a92),
+      Color(0xff7d6a7f),
+      Color(0xff4b5fba),
+    ];
+    final colorIndex =
+        course.name.codeUnits.fold<int>(0, (sum, unit) => sum + unit) %
+        colors.length;
+    final dark = theme.brightness == Brightness.dark;
+    final color = Color.alphaBlend(
+      colors[colorIndex].withValues(alpha: dark ? 0.65 : 0.2),
+      scheme.surfaceContainerLow,
+    );
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 76,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+              child: Column(
+                children: [
+                  Text(
+                    '${course.startSection}-${course.endSection}节',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (period != null) ...[
+                    const SizedBox(height: 8),
+                    if (period!.startTime.isNotEmpty)
+                      Text(
+                        period!.startTime,
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    if (period!.endTime.isNotEmpty)
+                      Text(period!.endTime, style: theme.textTheme.bodyMedium),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    course.name,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '教室 · ${course.location.isEmpty ? '待定' : course.location}',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '教师 · ${course.teacher.isEmpty ? '待定' : course.teacher}',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                  if (showWeeks && course.weeks.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(course.weeks, style: theme.textTheme.bodySmall),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AcademicListPage<T> extends StatefulWidget {
   const _AcademicListPage({
     required this.title,
-    required this.future,
+    required this.load,
     required this.builder,
+    this.webPath,
   });
   final String title;
-  final Future<List<T>> future;
-  final Widget Function(T) builder;
+  final Future<List<T>> Function() load;
+  final String? webPath;
+  final Widget Function(T, VoidCallback) builder;
+  @override
+  State<_AcademicListPage<T>> createState() => _AcademicListPageState<T>();
+}
+
+class _AcademicListPageState<T> extends State<_AcademicListPage<T>> {
+  late Future<List<T>> _future = widget.load();
+  void _reload() {
+    if (mounted) {
+      setState(() {
+        _future = widget.load();
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(title)),
+    appBar: AppBar(
+      title: Text(widget.title),
+      actions: [
+        if (widget.webPath != null)
+          _OriginalAcademicButton(title: widget.title, path: widget.webPath!),
+        IconButton(
+          tooltip: '刷新',
+          onPressed: _reload,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
+    ),
     body: FutureBuilder<List<T>>(
-      future: future,
+      future: _future,
       builder: (_, snapshot) {
         if (snapshot.hasError) {
-          return Center(child: Text('加载失败：${snapshot.error}'));
+          return _AcademicError(
+            error: snapshot.error,
+            webPath: widget.webPath,
+            onRetry: _reload,
+          );
         }
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-          itemCount: snapshot.requireData.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 12),
-          itemBuilder: (_, index) =>
-              Card(child: builder(snapshot.requireData[index])),
+        if (snapshot.requireData.isEmpty) {
+          return const Center(child: Text('当前暂无记录'));
+        }
+        return RefreshIndicator(
+          onRefresh: () async {
+            _reload();
+            await _future;
+          },
+          child: ListView.separated(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+            itemCount: snapshot.requireData.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 12),
+            itemBuilder: (_, index) => Card(
+              child: widget.builder(snapshot.requireData[index], _reload),
+            ),
+          ),
         );
       },
     ),
@@ -1572,6 +2141,9 @@ class AcademicWebScreen extends ConsumerStatefulWidget {
 class _AcademicWebScreenState extends ConsumerState<AcademicWebScreen> {
   WebViewController? _controller;
   Object? _error;
+  int _progress = 0;
+  bool _canGoBack = false;
+
   @override
   void initState() {
     super.initState();
@@ -1579,37 +2151,171 @@ class _AcademicWebScreenState extends ConsumerState<AcademicWebScreen> {
   }
 
   Future<void> _prepare() async {
+    if (mounted) {
+      setState(() {
+        _error = null;
+        _progress = 0;
+      });
+    }
     try {
       final url = await ref
           .read(cithubPlatformProvider)
           .prepareAcademicWebPage(widget.feature.webPath!);
-      final controller = WebViewController()
-        ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..setNavigationDelegate(
-          NavigationDelegate(
-            onNavigationRequest: (request) {
-              final uri = Uri.tryParse(request.url);
-              return uri != null && uri.scheme == 'https'
-                  ? NavigationDecision.navigate
-                  : NavigationDecision.prevent;
-            },
+      final controller = WebViewController();
+      await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+      await controller.setOnConsoleMessage(
+        (message) => RuntimeLog.write(
+          'academic-web-console',
+          '${message.level}: ${message.message}',
+        ),
+      );
+      await controller.setNavigationDelegate(
+        NavigationDelegate(
+          onNavigationRequest: (request) {
+            RuntimeLog.write(
+              'academic-web',
+              'NAVIGATION ${request.url} mainFrame=${request.isMainFrame}',
+            );
+            final uri = Uri.tryParse(request.url);
+            return uri != null &&
+                    (uri.scheme == 'https' || request.url == 'about:blank')
+                ? NavigationDecision.navigate
+                : NavigationDecision.prevent;
+          },
+          onProgress: (progress) {
+            if (mounted) setState(() => _progress = progress);
+          },
+          onPageStarted: (url) {
+            RuntimeLog.write('academic-web', 'START $url');
+            if (mounted) {
+              setState(() {
+                _error = null;
+                _progress = 0;
+              });
+            }
+          },
+          onPageFinished: (url) async {
+            RuntimeLog.write('academic-web', 'FINISH $url');
+            final back = await controller.canGoBack();
+            if (mounted) {
+              setState(() {
+                _canGoBack = back;
+                _progress = 100;
+              });
+            }
+            // Preserve the returned HTML and browser cookies for diagnosis.
+            try {
+              final page = await controller.runJavaScriptReturningResult(
+                'JSON.stringify({url:location.href,cookie:document.cookie,html:document.documentElement.outerHTML})',
+              );
+              RuntimeLog.write('academic-web-page', '$page');
+            } catch (error, stack) {
+              RuntimeLog.write('academic-web', '$error\n$stack');
+            }
+          },
+          onWebResourceError: (error) {
+            RuntimeLog.write(
+              'academic-web-error',
+              '${error.errorCode} ${error.description} url=${error.url}',
+            );
+            if (mounted && error.isForMainFrame != false) {
+              setState(() => _error = StateError(error.description));
+            }
+          },
+          onHttpError: (error) => RuntimeLog.write(
+            'academic-web-http',
+            '${error.response?.statusCode} ${error.request?.uri}',
           ),
-        )
-        ..loadRequest(Uri.parse(url));
-      if (mounted) setState(() => _controller = controller);
-    } catch (error) {
+        ),
+      );
+      if (!mounted) return;
+      setState(() => _controller = controller);
+      await controller.loadRequest(Uri.parse(url));
+    } catch (error, stack) {
+      RuntimeLog.write('academic-web', '$error\n$stack');
       if (mounted) setState(() => _error = error);
     }
   }
 
+  Future<void> _back() async {
+    if (_controller != null && await _controller!.canGoBack()) {
+      await _controller!.goBack();
+    } else if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(widget.feature.title)),
-    body: _error != null
-        ? Center(child: Text('加载失败：$_error'))
-        : _controller == null
-        ? const Center(child: CircularProgressIndicator())
-        : WebViewWidget(controller: _controller!),
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_canGoBack,
+    onPopInvokedWithResult: (didPop, _) {
+      if (!didPop) _back();
+    },
+    child: Scaffold(
+      appBar: AppBar(
+        title: Text(widget.feature.title),
+        leading: IconButton(
+          tooltip: '返回',
+          onPressed: _back,
+          icon: const Icon(Icons.arrow_back),
+        ),
+        actions: [
+          IconButton(
+            tooltip: '关闭网页',
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.close),
+          ),
+          IconButton(
+            tooltip: '刷新网页',
+            onPressed: _prepare,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
+      body: _error != null
+          ? _AcademicError(error: _error, onRetry: _prepare)
+          : _controller == null
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                if (_progress < 100)
+                  LinearProgressIndicator(value: _progress / 100),
+                Expanded(child: WebViewWidget(controller: _controller!)),
+              ],
+            ),
+    ),
+  );
+}
+
+Future<void> _openOriginalAcademicPage(
+  BuildContext context,
+  String title,
+  String path,
+) async {
+  await Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => AcademicWebScreen(
+        feature: AcademicFeature(
+          'original',
+          title,
+          '教务系统原始页面',
+          Icons.language,
+          webPath: path,
+        ),
+      ),
+    ),
+  );
+}
+
+class _OriginalAcademicButton extends StatelessWidget {
+  const _OriginalAcademicButton({required this.title, required this.path});
+  final String title;
+  final String path;
+  @override
+  Widget build(BuildContext context) => IconButton(
+    tooltip: '使用教务原始页面',
+    onPressed: () => _openOriginalAcademicPage(context, title, path),
+    icon: const Icon(Icons.language),
   );
 }
 
@@ -1656,9 +2362,16 @@ class _AcademicFeatureOrderScreenState
 }
 
 class _AcademicError extends StatelessWidget {
-  const _AcademicError({required this.error, required this.onRetry});
+  const _AcademicError({
+    required this.error,
+    required this.onRetry,
+    this.onReconnect,
+    this.webPath,
+  });
   final Object? error;
   final VoidCallback onRetry;
+  final VoidCallback? onReconnect;
+  final String? webPath;
   @override
   Widget build(BuildContext context) => Center(
     child: SingleChildScrollView(
@@ -1681,6 +2394,24 @@ class _AcademicError extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             FilledButton(onPressed: onRetry, child: const Text('重试')),
+            if (webPath != null)
+              TextButton(
+                onPressed: () async {
+                  await _openOriginalAcademicPage(context, '教务原始页面', webPath!);
+                  if (context.mounted) onRetry();
+                },
+                child: const Text('使用教务原始页面'),
+              ),
+            if (onReconnect != null)
+              TextButton(
+                onPressed: onReconnect,
+                child: const Text('重新连接 WebVPN'),
+              ),
+            if (Navigator.of(context).canPop())
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('返回教务首页 / 重新登录'),
+              ),
           ],
         ),
       ),
