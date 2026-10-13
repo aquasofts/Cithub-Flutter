@@ -25,3 +25,9 @@ The `autoCaptcha` flavor uses Google ML Kit Chinese Text Recognition. The `manua
 ## Flutter and packages
 
 Flutter and Dart are distributed under their respective BSD-style licenses. Dart packages retain the licenses declared by their publishers. `pubspec.lock` records the exact resolved package versions used for reproducible builds.
+
+## Campus AI and local timetable
+
+The AI interface uses Flyer Chat (`flutter_chat_ui`, `flutter_chat_core`, and `flyer_chat_text_message`), licensed under Apache-2.0: https://github.com/flyerhq/flutter_chat_ui. Its upstream license notices remain distributed with Flutter dependencies. Chatbox Community Edition (GPL-3.0, https://github.com/chatboxai/chatbox) informs the conversation/model-selection interaction; no Chatbox application source is embedded.
+
+PDF text extraction, scanned-page rendering, and preview use pdfrx (MIT), https://github.com/espresso3389/pdfrx. Office attachments use Dart archive (MIT) and XML parsing. Local schedule versions and conversations use sqflite (BSD-2-Clause). API transport implements the OpenAI-compatible Chat Completions wire format; no OpenAI key, hosted account, or service is bundled.

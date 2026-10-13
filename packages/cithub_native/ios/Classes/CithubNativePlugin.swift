@@ -24,6 +24,7 @@ public final class CithubNativePlugin: NSObject, FlutterPlugin {
             api: IOSTiebaApi(store: store, logger: logger, events: events)
         )
         UpdateHostApiSetup.setUp(binaryMessenger: messenger, api: IOSUpdateApi())
+        AiSecretHostApiSetup.setUp(binaryMessenger: messenger, api: IOSAiSecretApi(store: store))
         SettingsHostApiSetup.setUp(binaryMessenger: messenger, api: IOSSettingsApi())
         RuntimeLogHostApiSetup.setUp(binaryMessenger: messenger, api: IOSRuntimeLogApi(logger: logger))
         EventsStreamHandler.register(with: messenger, streamHandler: events)

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/native/cithub_api.g.dart';
+import '../../core/platform/cithub_platform.dart';
 import '../../core/settings/app_settings.dart';
+import '../../core/settings/navigation_state.dart';
 import '../academic/academic_screen.dart';
 import '../mine/mine_screen.dart';
-import '../news/news_screen.dart';
+import '../ai/ai_screen.dart';
 import '../tieba/tieba_screen.dart';
 
 class MainShell extends ConsumerStatefulWidget {
@@ -21,7 +24,7 @@ class _MainShellState extends ConsumerState<MainShell> {
 
   static const _roots = <Widget>[
     TiebaScreen(key: PageStorageKey('tieba')),
-    NewsScreen(key: PageStorageKey('news')),
+    AiScreen(key: PageStorageKey('ai')),
     AcademicScreen(key: PageStorageKey('academic')),
     MineScreen(key: PageStorageKey('mine')),
   ];
@@ -46,9 +49,9 @@ class _MainShellState extends ConsumerState<MainShell> {
       label: '贴吧',
     ),
     NavigationDestination(
-      icon: Icon(Icons.newspaper_outlined),
-      selectedIcon: Icon(Icons.newspaper),
-      label: '新闻',
+      icon: Icon(Icons.auto_awesome_outlined),
+      selectedIcon: Icon(Icons.auto_awesome),
+      label: 'AI',
     ),
     NavigationDestination(
       icon: Icon(Icons.school_outlined),
@@ -61,6 +64,23 @@ class _MainShellState extends ConsumerState<MainShell> {
       label: '我的',
     ),
   ];
+
+  Future<void> _recheckWebVpnSession() async {
+    final current = ref.read(webVpnSessionProvider);
+    try {
+      final session = await current;
+      if (!mounted ||
+          !identical(ref.read(webVpnSessionProvider), current) ||
+          session.status != AuthStatus.signedIn) {
+        return;
+      }
+      ref.read(webVpnSessionProvider.notifier).state = ref
+          .read(cithubPlatformProvider)
+          .initializeWebVpn();
+    } catch (_) {
+      // The Academic tab already displays the initialization error and retry.
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -80,11 +100,14 @@ class _MainShellState extends ConsumerState<MainShell> {
             index: _index,
             children: List.generate(
               _roots.length,
-              (index) => Navigator(
-                key: _navigators[index],
-                observers: [_navigatorObservers[index]],
-                onGenerateRoute: (_) =>
-                    MaterialPageRoute<void>(builder: (_) => _roots[index]),
+              (index) => TickerMode(
+                enabled: index == _index,
+                child: Navigator(
+                  key: _navigators[index],
+                  observers: [_navigatorObservers[index]],
+                  onGenerateRoute: (_) =>
+                      MaterialPageRoute<void>(builder: (_) => _roots[index]),
+                ),
               ),
             ),
           ),
@@ -102,6 +125,8 @@ class _MainShellState extends ConsumerState<MainShell> {
               );
             } else {
               setState(() => _index = value);
+              ref.read(mainTabProvider.notifier).state = value;
+              if (value == 2) _recheckWebVpnSession();
             }
           },
         ),

@@ -9,6 +9,8 @@ import '../../core/logging/runtime_log.dart';
 import '../../core/utils/user_facing_error.dart';
 import '../../core/native/cithub_api.g.dart';
 import '../../core/settings/app_settings.dart';
+import 'account_settings_screen.dart';
+import '../ai/ai_settings_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -21,6 +23,18 @@ class SettingsScreen extends StatelessWidget {
       children: [
         _SettingsCard(
           children: [
+            _SettingsLink(
+              icon: Icons.manage_accounts_outlined,
+              title: '账号与关于',
+              subtitle: '贴吧、WebVPN、登录与退出',
+              page: const Scaffold(body: AccountSettingsScreen()),
+            ),
+            _SettingsLink(
+              icon: Icons.auto_awesome_outlined,
+              title: 'AI',
+              subtitle: '服务地址、API Key 与可选模型',
+              page: const AiSettingsScreen(),
+            ),
             _SettingsLink(
               icon: Icons.palette_outlined,
               title: '外观',

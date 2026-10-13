@@ -15,7 +15,9 @@ Record device model, Android version, app flavor, app version, certificate SHA-2
 - [ ] Multi-account add/select/forget uses encrypted local password storage.
 - [ ] Captcha refresh, wrong captcha, wrong password, required action, and valid login states render correctly.
 - [ ] Auto flavor recognizes captcha and performs permitted automatic re-login; manual flavor does neither.
-- [ ] Cookie restoration, periodic revalidation, expiration, and logout work.
+- [ ] Cookie restoration, revalidation when opening Academic or Mine, expiration, and logout work.
+- [ ] 登录教务后“我的”立即显示 WebVPN 已连接；从“我的”退出后教务返回登录页，重启应用也不会自动登录已主动退出的账号。
+- [ ] 自动验证码版在 WebVPN 或教务会话自然失效后使用已保存的对应账号续登；手动验证码版显示登录表单。
 - [ ] Independent academic login works; grades, timetable, selection results, and evaluation parse real pages.
 - [ ] Course selection, classroom request, textbook account, textbook confirmation, and minor registration WebViews retain cookies, navigation, forms, uploads, downloads, and back behavior.
 

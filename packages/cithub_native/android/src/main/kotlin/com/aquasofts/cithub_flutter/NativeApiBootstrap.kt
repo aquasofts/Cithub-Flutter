@@ -3,6 +3,7 @@ package com.aquasofts.cithub_flutter
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import com.aquasofts.cithub_flutter.native.AiSecretHostApi
 import com.aquasofts.cithub_flutter.native.AcademicHostApi
 import com.aquasofts.cithub_flutter.native.EventsStreamHandler
 import com.aquasofts.cithub_flutter.native.FlutterError
@@ -54,10 +55,12 @@ internal object NativeApiBootstrap {
         val events = NativeEvents(mainHandler)
         val state = NativeSessionState(secureStore)
 
-        WebVpnHostApi.setUp(messenger, AndroidWebVpnApi(appContext, state, logs, executor, mainHandler, events))
-        AcademicHostApi.setUp(messenger, AndroidAcademicApi(state, logs, executor, mainHandler))
+        val webVpnApi = AndroidWebVpnApi(appContext, state, logs, executor, mainHandler, events)
+        WebVpnHostApi.setUp(messenger, webVpnApi)
+        AcademicHostApi.setUp(messenger, AndroidAcademicApi(state, logs, executor, mainHandler, webVpnApi::renewIfNeeded))
         TiebaHostApi.setUp(messenger, AndroidTiebaApi(appContext, state, logs, executor, mainHandler, events))
         UpdateHostApi.setUp(messenger, AndroidUpdateApi(appContext, logs, executor, mainHandler, events))
+        AiSecretHostApi.setUp(messenger, AndroidAiSecretApi(secureStore, executor, mainHandler))
         SettingsHostApi.setUp(messenger, AndroidSettingsApi(appContext, executor, mainHandler))
         RuntimeLogHostApi.setUp(messenger, AndroidRuntimeLogApi(appContext, logs, executor, mainHandler))
         EventsStreamHandler.register(messenger, events)
@@ -70,6 +73,7 @@ internal object NativeApiBootstrap {
         AcademicHostApi.setUp(messenger, null)
         TiebaHostApi.setUp(messenger, null)
         UpdateHostApi.setUp(messenger, null)
+        AiSecretHostApi.setUp(messenger, null)
         SettingsHostApi.setUp(messenger, null)
         RuntimeLogHostApi.setUp(messenger, null)
         EventsStreamHandler.register(messenger, object : EventsStreamHandler() {})

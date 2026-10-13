@@ -1,5 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/services.dart';
+
+import 'package:cithub_flutter/core/storage/local_database.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:cithub_flutter/app/cithub_app.dart';
 import 'package:cithub_flutter/core/platform/cithub_platform.dart';
@@ -16,10 +22,61 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  TestWidgetsFlutterBinding.ensureInitialized();
+  late Directory cacheDirectory;
+  setUpAll(() async {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfiNoIsolate;
+    cacheDirectory = await Directory.systemTemp.createTemp(
+      'cithub-widget-cache',
+    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          (_) async => cacheDirectory.path,
+        );
+  });
+  tearDownAll(() async {
+    if (await cacheDirectory.exists()) {
+      await cacheDirectory.delete(recursive: true);
+    }
+  });
+  late LocalDatabase local;
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    sqfliteFfiInit();
+
+    local = LocalDatabase.at(
+      path: inMemoryDatabasePath,
+      factory: databaseFactoryFfiNoIsolate,
+    );
+    await local.database;
+  });
+  tearDown(() async {
+    await (await local.database).close();
+  });
+  Future<void> settle(WidgetTester tester) async {
+    for (var i = 0; i < 20; i++) {
+      await tester.pump();
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 5)),
+      );
+    }
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> openAccounts(WidgetTester tester) async {
+    await tester.tap(find.byTooltip('设置'));
+    await settle(tester);
+    await tester.tap(find.text('账号与关于'));
+    await settle(tester);
+  }
 
   Widget app() => ProviderScope(
-    overrides: [cithubPlatformProvider.overrideWithValue(DemoCithubPlatform())],
+    overrides: [
+      localDatabaseProvider.overrideWithValue(local),
+      cithubPlatformProvider.overrideWithValue(DemoCithubPlatform()),
+    ],
     child: const CithubApp(),
   );
 
@@ -27,31 +84,35 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(app());
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     expect(find.text('贴吧'), findsWidgets);
-    expect(find.text('新闻'), findsOneWidget);
+    expect(find.text('AI'), findsOneWidget);
     expect(find.text('教务'), findsOneWidget);
     expect(find.text('我的'), findsOneWidget);
     expect(find.text('欢迎来到 长春工程学院 吧'), findsOneWidget);
+    expect(
+      tester.getBottomLeft(find.text('长春工程学院吧')).dy,
+      lessThan(tester.getTopLeft(find.widgetWithText(ChoiceChip, '最新')).dy),
+    );
 
     await tester.tap(find.text('欢迎来到 长春工程学院 吧'));
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(find.text('回复 18'), findsOneWidget);
     expect(find.text('这是主题内容。'), findsOneWidget);
     expect(find.byType(FloatingActionButton), findsNothing);
     expect(find.textContaining('第 1 页'), findsNothing);
-    expect(find.text('新闻'), findsOneWidget);
+    expect(find.text('AI'), findsOneWidget);
 
-    await tester.tap(find.text('新闻'));
-    await tester.pumpAndSettle();
-    expect(find.text('公众号'), findsOneWidget);
+    await tester.tap(find.text('AI'));
+    await settle(tester);
+    expect(find.text('先配置 AI 服务与模型'), findsOneWidget);
     await tester.tap(find.text('贴吧'));
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(find.text('这是主题内容。'), findsOneWidget);
 
     await tester.pageBack();
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(find.text('长春工程学院吧'), findsOneWidget);
     expect(find.text('这是主题内容。'), findsNothing);
   });
@@ -62,11 +123,14 @@ void main() {
       final platform = _TiebaLayoutPlatform();
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [cithubPlatformProvider.overrideWithValue(platform)],
+          overrides: [
+            localDatabaseProvider.overrideWithValue(local),
+            cithubPlatformProvider.overrideWithValue(platform),
+          ],
           child: const CithubApp(),
         ),
       );
-      await tester.pumpAndSettle();
+      await settle(tester);
 
       expect(find.byKey(const Key('tieba-emoticon-滑稽')), findsOneWidget);
       expect(find.byKey(const Key('tieba-emoticon-笑尿')), findsOneWidget);
@@ -87,7 +151,7 @@ void main() {
       expect(middle.dx, lessThan(right.dx));
 
       await tester.tap(find.text('欢迎来到 长春工程学院 吧'));
-      await tester.pumpAndSettle();
+      await settle(tester);
 
       final titleLeft = tester.getTopLeft(find.text('欢迎来到 长春工程学院 吧').first).dx;
       final authorLeft = tester.getTopLeft(find.text('楼主').first).dx;
@@ -114,11 +178,16 @@ void main() {
         find.byKey(const Key('thread-1000')),
         const Offset(0, -520),
       );
-      await tester.pumpAndSettle();
+      await settle(tester);
       expect(find.byTooltip('回到顶部'), findsOneWidget);
       await tester.tap(find.byTooltip('回到顶部'));
-      await tester.pumpAndSettle();
+      await settle(tester);
       expect(find.byTooltip('回到顶部'), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 11));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 30)),
+      );
     },
   );
 
@@ -126,46 +195,41 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(app());
-    await tester.pumpAndSettle();
+    await settle(tester);
 
-    final tiebaAppBar = tester.widget<SliverAppBar>(
+    final tiebaAppBar = tester.widget<AppBar>(
       find.descendant(
-        of: find.byKey(const PageStorageKey('tieba-scroll')),
-        matching: find.byType(SliverAppBar),
+        of: find.byType(TiebaScreen),
+        matching: find.byType(AppBar),
       ),
     );
     expect(tiebaAppBar.scrolledUnderElevation, 0);
     expect(tiebaAppBar.surfaceTintColor, Colors.transparent);
-
-    for (final tab in ['新闻', '教务', '我的']) {
-      await tester.tap(find.text(tab).last);
-      await tester.pumpAndSettle();
-      final scrollKey = switch (tab) {
-        '新闻' => const PageStorageKey('news-wechat'),
-        '教务' => const PageStorageKey('academic-scroll'),
-        _ => const PageStorageKey('mine-scroll'),
-      };
-      final title = find.descendant(
-        of: find.byKey(scrollKey),
-        matching: find.text(switch (tab) {
-          '教务' => '教务系统',
-          '我的' => '个人信息',
-          _ => tab,
-        }),
-      );
-      expect(title, findsOneWidget);
-      expect(tester.getTopLeft(title).dy, lessThan(80));
-    }
-
-    expect(find.byTooltip('设置'), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.byKey(const PageStorageKey('mine-scroll')),
-        matching: find.text('我的'),
-      ),
-      findsNothing,
+    final headerPosition = tester.getTopLeft(find.text('长春工程学院吧'));
+    await tester.drag(
+      find.byKey(const PageStorageKey('tieba-scroll')),
+      const Offset(0, -180),
     );
-    expect(find.text('个人信息'), findsOneWidget);
+    await settle(tester);
+    expect(tester.getTopLeft(find.text('长春工程学院吧')), headerPosition);
+    await tester.tap(find.widgetWithText(ChoiceChip, '精品'));
+    await settle(tester);
+    expect(
+      tester.getBottomLeft(find.text('长春工程学院吧')).dy,
+      lessThan(tester.getTopLeft(find.widgetWithText(ChoiceChip, '精品')).dy),
+    );
+
+    for (final tab in ['AI', '教务', '我的']) {
+      await tester.tap(find.text(tab).last);
+      await settle(tester);
+      expect(
+        find.text({'AI': 'AI', '教务': '教务系统', '我的': '我的课表'}[tab]!),
+        findsWidgets,
+      );
+      expect(tester.takeException(), isNull);
+    }
+    expect(find.byTooltip('设置'), findsOneWidget);
+    expect(find.text('个人信息'), findsNothing);
   });
 
   testWidgets('Mine shows account details before explicit logout actions', (
@@ -174,14 +238,18 @@ void main() {
     final platform = _SignedInMinePlatform();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [cithubPlatformProvider.overrideWithValue(platform)],
+        overrides: [
+          localDatabaseProvider.overrideWithValue(local),
+          cithubPlatformProvider.overrideWithValue(platform),
+        ],
         child: const CithubApp(),
       ),
     );
-    await tester.pumpAndSettle();
+    await settle(tester);
     await tester.tap(find.text('我的').last);
-    await tester.pumpAndSettle();
+    await settle(tester);
 
+    await openAccounts(tester);
     expect(find.text('贴吧同学'), findsOneWidget);
     expect(find.text('已连接'), findsOneWidget);
     expect(find.text('退出贴吧账号'), findsOneWidget);
@@ -192,20 +260,112 @@ void main() {
     );
 
     await tester.tap(find.text('退出贴吧账号'));
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(platform.tiebaLogouts, 1);
     expect(find.text('登录'), findsOneWidget);
   });
 
-  testWidgets('Tieba login entry exists only in Mine', (tester) async {
+  testWidgets('WebVPN login and logout stay in sync across Academic and Mine', (
+    tester,
+  ) async {
+    final platform = DemoCithubPlatform();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          localDatabaseProvider.overrideWithValue(local),
+          cithubPlatformProvider.overrideWithValue(platform),
+        ],
+        child: const CithubApp(),
+      ),
+    );
+    await settle(tester);
+    await tester.tap(find.text('教务').last);
+    await settle(tester);
+    final login = find.byType(WebVpnLoginPanel).first;
+    await tester.enterText(
+      find.descendant(of: login, matching: find.byType(TextField)).at(0),
+      '20260001',
+    );
+    await tester.enterText(
+      find.descendant(of: login, matching: find.byType(TextField)).at(1),
+      'password',
+    );
+    await tester.tap(find.byKey(const Key('webvpn-login')).first);
+    await settle(tester);
+
+    await tester.tap(find.text('我的').last);
+    await settle(tester);
+    await openAccounts(tester);
+    expect(find.byKey(const Key('mine-webvpn-logout')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('mine-webvpn-logout')));
+    await settle(tester);
+    await tester.tap(find.text('教务').last);
+    await settle(tester);
+    expect(find.text('登录 WebVPN'), findsOneWidget);
+  });
+
+  testWidgets('opening Mine works without rechecking WebVPN', (tester) async {
+    final platform = _ExpiringWebVpnPlatform();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          localDatabaseProvider.overrideWithValue(local),
+          cithubPlatformProvider.overrideWithValue(platform),
+        ],
+        child: const CithubApp(),
+      ),
+    );
+    await settle(tester);
+    expect(platform.initializations, 1);
+
+    await tester.tap(find.text('我的').last);
+    await settle(tester);
+    expect(platform.initializations, 1);
+    expect(find.byKey(const Key('mine-webvpn-logout')), findsNothing);
+
+    await tester.tap(find.text('教务').last);
+    await settle(tester);
+    expect(find.text('登录 WebVPN'), findsOneWidget);
+  });
+
+  testWidgets('primary tabs remain usable at 320dp with large text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 800);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          localDatabaseProvider.overrideWithValue(local),
+          cithubPlatformProvider.overrideWithValue(DemoCithubPlatform()),
+        ],
+        child: const CithubApp(),
+      ),
+    );
+    await settle(tester);
+    for (final tab in ['AI', '教务', '我的']) {
+      await tester.tap(find.text(tab).last);
+      await settle(tester);
+      expect(tester.takeException(), isNull, reason: '$tab layout overflowed');
+    }
+  });
+
+  testWidgets('Tieba login entry exists in settings', (tester) async {
     await tester.pumpWidget(app());
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     expect(find.byTooltip('贴吧登录'), findsNothing);
     expect(find.text('百度贴吧'), findsNothing);
 
     await tester.tap(find.text('我的'));
-    await tester.pumpAndSettle();
+    await settle(tester);
+    expect(find.text('百度贴吧'), findsNothing);
+    await openAccounts(tester);
     expect(find.text('百度贴吧'), findsOneWidget);
     expect(find.text('登录'), findsOneWidget);
   });
@@ -215,7 +375,10 @@ void main() {
   ) async {
     final platform = _TiebaRecordingPlatform();
     final container = ProviderContainer(
-      overrides: [cithubPlatformProvider.overrideWithValue(platform)],
+      overrides: [
+        localDatabaseProvider.overrideWithValue(local),
+        cithubPlatformProvider.overrideWithValue(platform),
+      ],
     );
     addTearDown(container.dispose);
     await tester.pumpWidget(
@@ -224,13 +387,13 @@ void main() {
         child: const MaterialApp(home: Scaffold(body: TiebaScreen())),
       ),
     );
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(platform.loadedForums.last, defaultTiebaHomeForum);
 
     await container
         .read(appSettingsProvider.notifier)
         .setTiebaHomeForumName('南湖吧');
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     expect(find.text('南湖吧'), findsOneWidget);
     expect(platform.loadedForums.last, '南湖');
@@ -241,7 +404,10 @@ void main() {
   ) async {
     final platform = _DelayedTiebaPlatform();
     final container = ProviderContainer(
-      overrides: [cithubPlatformProvider.overrideWithValue(platform)],
+      overrides: [
+        localDatabaseProvider.overrideWithValue(local),
+        cithubPlatformProvider.overrideWithValue(platform),
+      ],
     );
     addTearDown(container.dispose);
     await tester.pumpWidget(
@@ -262,11 +428,11 @@ void main() {
     expect(platform.requests, contains('南湖'));
 
     platform.release('南湖');
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(find.text('南湖 讨论帖 2'), findsOneWidget);
 
     platform.release(defaultTiebaHomeForum);
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(find.text('南湖 讨论帖 2'), findsOneWidget);
     expect(find.text('长春工程学院 讨论帖 2'), findsNothing);
   });
@@ -277,13 +443,16 @@ void main() {
     final platform = _TiebaRecordingPlatform();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [cithubPlatformProvider.overrideWithValue(platform)],
+        overrides: [
+          localDatabaseProvider.overrideWithValue(local),
+          cithubPlatformProvider.overrideWithValue(platform),
+        ],
         child: const MaterialApp(home: Scaffold(body: TiebaScreen())),
       ),
     );
-    await tester.pumpAndSettle();
+    await settle(tester);
     await tester.tap(find.text('欢迎来到 长春工程学院 吧'));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     expect(find.text('这是主题内容。'), findsOneWidget);
     expect(find.byKey(const Key('thread-main-floor')), findsOneWidget);
@@ -292,9 +461,9 @@ void main() {
     final floor = find.byKey(const Key('floor-menu-10000002'));
     await tester.ensureVisible(floor);
     await tester.longPress(floor);
-    await tester.pumpAndSettle();
+    await settle(tester);
     await tester.tap(find.text('回复'));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     expect(platform.lastReplyThreadId, 1000);
     expect(platform.lastReplyPostId, 10000002);
@@ -311,12 +480,12 @@ void main() {
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 
     await tester.pumpWidget(app());
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(find.text('长春工程学院吧'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.text('欢迎来到 长春工程学院 吧'));
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(find.text('这是主题内容。'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -363,13 +532,13 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(home: Scaffold(body: NewsScreen())),
     );
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(find.textContaining('公众号紧凑卡片'), findsOneWidget);
     expect(find.byKey(const Key('news-thumbnail')), findsNothing);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.text('校内新闻'));
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(find.byKey(const Key('news-thumbnail')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -385,9 +554,9 @@ void main() {
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 
     await tester.pumpWidget(app());
-    await tester.pumpAndSettle();
+    await settle(tester);
     await tester.tap(find.text('教务'));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     expect(find.text('登录 WebVPN'), findsOneWidget);
     expect(find.text('统一身份认证账号'), findsOneWidget);
@@ -405,13 +574,16 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [cithubPlatformProvider.overrideWithValue(platform)],
+        overrides: [
+          localDatabaseProvider.overrideWithValue(local),
+          cithubPlatformProvider.overrideWithValue(platform),
+        ],
         child: const CithubApp(),
       ),
     );
-    await tester.pumpAndSettle();
+    await settle(tester);
     await tester.tap(find.text('教务').last);
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     final refresh = find.byKey(const Key('webvpn-captcha-refresh'));
     expect(refresh, findsOneWidget);
@@ -421,7 +593,7 @@ void main() {
     expect(tester.widget<IconButton>(refresh).onPressed, isNull);
 
     platform.completeCaptchaRefresh();
-    await tester.pumpAndSettle();
+    await settle(tester);
     final login = find.byKey(const Key('webvpn-login'));
     await tester.ensureVisible(login);
     await tester.tap(login);
@@ -438,13 +610,16 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [cithubPlatformProvider.overrideWithValue(platform)],
+        overrides: [
+          localDatabaseProvider.overrideWithValue(local),
+          cithubPlatformProvider.overrideWithValue(platform),
+        ],
         child: const CithubApp(),
       ),
     );
-    await tester.pumpAndSettle();
+    await settle(tester);
     await tester.tap(find.text('教务').last);
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     expect(find.text('登录教务系统'), findsOneWidget);
     final refresh = find.byKey(const Key('webvpn-captcha-refresh'));
@@ -489,7 +664,7 @@ void main() {
     );
 
     await tester.pumpWidget(panel(session('captcha-1', '1234')));
-    await tester.pumpAndSettle();
+    await settle(tester);
     TextField captchaField() => tester.widget<TextField>(
       find.byWidgetPredicate(
         (widget) =>
@@ -499,7 +674,7 @@ void main() {
     expect(captchaField().controller!.text, '1234');
 
     await tester.pumpWidget(panel(session('captcha-2', '')));
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(captchaField().controller!.text, isEmpty);
   });
 
@@ -514,13 +689,16 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [cithubPlatformProvider.overrideWithValue(platform)],
+        overrides: [
+          localDatabaseProvider.overrideWithValue(local),
+          cithubPlatformProvider.overrideWithValue(platform),
+        ],
         child: const CithubApp(),
       ),
     );
-    await tester.pumpAndSettle();
+    await settle(tester);
     await tester.tap(find.text('教务').last);
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     expect(find.text('9 项学生服务'), findsOneWidget);
     expect(find.byType(SliverGrid), findsNothing);
@@ -534,11 +712,11 @@ void main() {
     );
 
     await tester.tap(find.text('成绩查询').first);
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(find.text('同一课程只显示最好成绩'), findsOneWidget);
     await tester.tap(find.text('同一课程只显示最好成绩'));
     await tester.tap(find.text('查询成绩'));
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(platform.lastBestOnly, isTrue);
     expect(find.text('程序设计基础'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -550,7 +728,10 @@ void main() {
     final platform = _RecordingPlatform();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [cithubPlatformProvider.overrideWithValue(platform)],
+        overrides: [
+          localDatabaseProvider.overrideWithValue(local),
+          cithubPlatformProvider.overrideWithValue(platform),
+        ],
         child: MaterialApp(
           home: EvaluationFormScreen(
             course: EvaluationCourseDto(
@@ -569,14 +750,14 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     expect(find.textContaining('教学态度认真'), findsOneWidget);
     await tester.tap(find.text('提交评价'));
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(find.text('确认提交评价？'), findsOneWidget);
     await tester.tap(find.text('确认提交'));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     expect(platform.submissions, 1);
   });
@@ -804,6 +985,23 @@ class _SignedInAcademicPlatform extends DemoCithubPlatform {
   }) {
     lastBestOnly = bestOnly;
     return super.loadGrades(term, bestOnly: bestOnly);
+  }
+}
+
+class _ExpiringWebVpnPlatform extends _SignedInAcademicPlatform {
+  int initializations = 0;
+
+  @override
+  Future<WebVpnSessionDto> initializeWebVpn() async {
+    initializations++;
+    if (initializations == 1) return super.initializeWebVpn();
+    return WebVpnSessionDto(
+      status: AuthStatus.signedOut,
+      requiredAction: RequiredAccountAction.none,
+      user: null,
+      savedAccounts: const [],
+      requiresCaptcha: false,
+    );
   }
 }
 

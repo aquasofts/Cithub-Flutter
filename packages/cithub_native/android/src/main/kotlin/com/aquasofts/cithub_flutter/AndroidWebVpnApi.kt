@@ -29,6 +29,7 @@ internal class AndroidWebVpnApi(
     @Volatile private var configuration: WebVpnLoginConfiguration? = null
     @Volatile private var captcha: CaptchaDto? = null
     @Volatile private var activeUser: WebVpnUser? = null
+    @Volatile private var allowAutomaticLogin = state.secureStore.get("webvpn.auto_login_disabled") != "true"
 
     override fun getCapabilities(): NativeCapabilities {
         val info = context.packageManager.getPackageInfo(context.packageName, 0)
@@ -78,6 +79,9 @@ internal class AndroidWebVpnApi(
             refreshAcademicRoute()
             state.webVpnSignedIn = true
             state.webVpnUsername = username
+            allowAutomaticLogin = true
+            state.secureStore.remove("webvpn.auto_login_disabled")
+            state.secureStore.put("webvpn.last_username", username)
             syncWebViewCookies()
             if (request.rememberPassword) saveCredential(username, password)
             events.emit("webvpn", "signedIn", "WebVPN 登录成功")
@@ -123,12 +127,15 @@ internal class AndroidWebVpnApi(
             client.logout()
             clearWebViewCookies(cookies, academicOrigin)
             clearActiveSession()
+            allowAutomaticLogin = false
+            state.secureStore.put("webvpn.auto_login_disabled", "true")
             events.emit("webvpn", "signedOut", "已退出 WebVPN")
             signedOutSession("已退出")
         }
 
     @Synchronized
     private fun initializeBlocking(): WebVpnSessionDto {
+        val previousUsername = state.webVpnUsername ?: state.secureStore.get("webvpn.last_username")
         if (client.hasRestorableSession()) {
             val restored = runCatching { client.userInfo() }.getOrNull()
             if (restored != null) {
@@ -140,13 +147,17 @@ internal class AndroidWebVpnApi(
                 logs.append("webvpn", "Encrypted Cookie session restored")
                 return session("已恢复 WebVPN 会话")
             }
-            client.clearSession()
         }
+        clearActiveSession()
 
         val config = ensureConfiguration()
         if (config.requiresCaptcha) refreshCaptchaBlocking()
-        if (BuildConfig.CAPTCHA_AUTOFILL_ENABLED) {
-            val username = savedUsernames().firstOrNull()
+        if (BuildConfig.CAPTCHA_AUTOFILL_ENABLED && allowAutomaticLogin) {
+            val username = if (previousUsername == null) {
+                savedUsernames().firstOrNull()
+            } else {
+                previousUsername.takeIf { state.secureStore.get("webvpn.password.$it") != null }
+            }
             val password = username?.let { state.secureStore.get("webvpn.password.$it") }
             val currentCaptcha = captcha
             if (username != null && password != null &&
@@ -166,6 +177,7 @@ internal class AndroidWebVpnApi(
                     refreshAcademicRoute()
                     state.webVpnSignedIn = true
                     state.webVpnUsername = username
+                    state.secureStore.put("webvpn.last_username", username)
                     syncWebViewCookies()
                     events.emit("webvpn", "signedIn", "已自动续登 WebVPN")
                     return session("已自动续登")
@@ -176,6 +188,8 @@ internal class AndroidWebVpnApi(
         }
         return signedOutSession()
     }
+
+    fun renewIfNeeded(): Boolean = initializeBlocking().status == AuthStatus.SIGNED_IN
 
     private fun ensureConfiguration(): WebVpnLoginConfiguration =
         configuration ?: client.loadConfiguration().also { configuration = it }

@@ -1,9 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../native/cithub_api.g.dart';
+import '../utils/request_queue.dart';
 import '../native/cithub_api.g.dart' as native;
 
 abstract interface class CithubPlatform {
+  Future<String?> readAiApiKey();
+  Future<bool> writeAiApiKey(String value);
+  Future<bool> deleteAiApiKey();
   Future<NativeCapabilities> capabilities();
   Future<WebVpnSessionDto> initializeWebVpn();
   Future<WebVpnSessionDto> loginWebVpn(LoginRequestDto request);
@@ -72,7 +76,19 @@ abstract interface class CithubPlatform {
   Stream<NativeEventDto> get events;
 }
 
+/// One WebVPN session future shared by the Academic and Mine tabs.
+final webVpnSessionProvider = StateProvider<Future<WebVpnSessionDto>>(
+  (ref) => ref.read(cithubPlatformProvider).initializeWebVpn(),
+);
+
 class PigeonCithubPlatform implements CithubPlatform {
+  final _aiSecrets = AiSecretHostApi();
+  @override
+  Future<String?> readAiApiKey() => _aiSecrets.readApiKey();
+  @override
+  Future<bool> writeAiApiKey(String value) => _aiSecrets.writeApiKey(value);
+  @override
+  Future<bool> deleteAiApiKey() => _aiSecrets.deleteApiKey();
   final _webVpn = WebVpnHostApi();
   final _academic = AcademicHostApi();
   final _tieba = TiebaHostApi();
@@ -158,13 +174,19 @@ class PigeonCithubPlatform implements CithubPlatform {
     int page = 1,
     String sort = 'reply',
     bool goodOnly = false,
-  }) => _tieba.loadForum(name, page, sort, goodOnly);
+  }) => RequestQueue.tieba.run(
+    'forum:$name:$page:$sort:$goodOnly',
+    () => _tieba.loadForum(name, page, sort, goodOnly),
+  );
   @override
   Future<ForumPageDto> searchForum(
     String name,
     String keyword, {
     int page = 1,
-  }) => _tieba.search(name, keyword, page);
+  }) => RequestQueue.tieba.run(
+    'search:$name:$keyword:$page',
+    () => _tieba.search(name, keyword, page),
+  );
   @override
   Future<ThreadPageDto> loadThread(
     String threadId,
@@ -173,20 +195,26 @@ class PigeonCithubPlatform implements CithubPlatform {
     int page = 1,
     String sort = 'asc',
     bool onlyOriginalPoster = false,
-  }) => _tieba.loadThread(
-    threadId,
-    forumId,
-    forumName,
-    page,
-    sort,
-    onlyOriginalPoster,
+  }) => RequestQueue.tieba.run(
+    'thread:$threadId:$page:$sort:$onlyOriginalPoster',
+    () => _tieba.loadThread(
+      threadId,
+      forumId,
+      forumName,
+      page,
+      sort,
+      onlyOriginalPoster,
+    ),
   );
   @override
   Future<FloorReplyPageDto> loadFloorReplies(
     String threadId,
     String postId, {
     int page = 1,
-  }) => _tieba.loadFloorReplies(threadId, postId, page);
+  }) => RequestQueue.tieba.run(
+    'replies:$threadId:$postId:$page',
+    () => _tieba.loadFloorReplies(threadId, postId, page),
+  );
   @override
   Future<TiebaUserProfileDto> loadTiebaUserProfile(int uid) =>
       _tieba.loadUserProfile(uid);

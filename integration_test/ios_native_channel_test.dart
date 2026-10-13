@@ -18,6 +18,18 @@ void main() {
     expect(capabilities.captchaAutofillEnabled, isFalse);
     expect(capabilities.versionName, isNotEmpty);
     expect(await platform.clearRuntimeLog(), isTrue);
+    final previousKey = await platform.readAiApiKey();
+    try {
+      expect(await platform.writeAiApiKey('cithub-channel-test'), isTrue);
+      expect(
+        await PigeonCithubPlatform().readAiApiKey(),
+        'cithub-channel-test',
+      );
+      expect(await platform.deleteAiApiKey(), isTrue);
+      expect(await platform.readAiApiKey(), isNull);
+    } finally {
+      if (previousKey != null) await platform.writeAiApiKey(previousKey);
+    }
 
     await expectLater(
       platform.initializeAcademic('20260001'),

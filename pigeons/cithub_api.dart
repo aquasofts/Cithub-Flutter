@@ -809,3 +809,13 @@ abstract class RuntimeLogHostApi {
 abstract class NativeEventChannelApi {
   NativeEventDto events();
 }
+
+@HostApi()
+abstract class AiSecretHostApi {
+  @async
+  String? readApiKey();
+  @async
+  bool writeApiKey(String value);
+  @async
+  bool deleteApiKey();
+}

@@ -12,6 +12,9 @@ import '../../core/native/cithub_api.g.dart';
 import '../../core/platform/cithub_platform.dart';
 import '../../core/settings/app_settings.dart';
 import '../../core/utils/pagination.dart';
+import '../../core/utils/request_queue.dart';
+import '../news/news_screen.dart';
+import '../news/news_repository.dart';
 
 class TiebaScreen extends ConsumerStatefulWidget {
   const TiebaScreen({super.key});
@@ -28,6 +31,7 @@ class _TiebaScreenState extends ConsumerState<TiebaScreen>
   String _forumName = defaultTiebaHomeForum;
   String _sort = 'reply';
   bool _goodOnly = false;
+  int _section = 0;
   bool _loading = false;
   bool _hasMore = true;
   int _page = 0;
@@ -72,6 +76,7 @@ class _TiebaScreenState extends ConsumerState<TiebaScreen>
 
   Future<void> _resetAndLoad({String? forumName}) async {
     if (forumName != null) _forumName = forumName;
+    RequestQueue.tieba.clearCache();
     _generation++;
     setState(() {
       _forum = null;
@@ -167,17 +172,12 @@ class _TiebaScreenState extends ConsumerState<TiebaScreen>
       },
     );
 
-    final pinned = _threads.where((item) => item.isTop).toList();
-    final regular = _threads.where((item) => !item.isTop).toList();
-    return RefreshIndicator(
-      onRefresh: _resetAndLoad,
-      child: CustomScrollView(
-        key: const PageStorageKey('tieba-scroll'),
-        controller: _scrollController,
-        physics: const AlwaysScrollableScrollPhysics(),
-        slivers: [
-          SliverAppBar(
-            pinned: true,
+    return Column(
+      children: [
+        if (_section < 2)
+          AppBar(
+            primary: false,
+            automaticallyImplyLeading: false,
             elevation: 0,
             scrolledUnderElevation: 0,
             backgroundColor: Theme.of(context).colorScheme.surface,
@@ -213,11 +213,20 @@ class _TiebaScreenState extends ConsumerState<TiebaScreen>
                 icon: const Icon(Icons.sort),
                 initialValue: _sort,
                 onSelected: (value) {
+                  if (value == 'resume') {
+                    if (!RequestQueue.tieba.resume()) {
+                      _message(context, '请等待限流时间结束后再重试');
+                      return;
+                    }
+                    _resetAndLoad();
+                    return;
+                  }
                   if (value == _sort) return;
                   _sort = value;
                   _resetAndLoad();
                 },
                 itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'resume', child: Text('风控处理后重试')),
                   PopupMenuItem(value: 'reply', child: Text('按回复时间')),
                   PopupMenuItem(value: 'post', child: Text('按发帖时间')),
                 ],
@@ -225,36 +234,58 @@ class _TiebaScreenState extends ConsumerState<TiebaScreen>
               const SizedBox(width: 4),
             ],
           ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-            sliver: SliverToBoxAdapter(
-              child: Wrap(
-                spacing: 8,
-                children: [
-                  ChoiceChip(
-                    label: const Text('最新'),
-                    selected: !_goodOnly,
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: List.generate(
+                5,
+                (i) => Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(['最新', '精品', '公众号', '校内新闻', '官方新闻'][i]),
+                    selected: _section == i,
                     onSelected: (_) {
-                      if (_goodOnly) {
-                        _goodOnly = false;
+                      setState(() => _section = i);
+                      if (i < 2 && _goodOnly != (i == 1)) {
+                        _goodOnly = i == 1;
                         _resetAndLoad();
                       }
                     },
                   ),
-                  ChoiceChip(
-                    label: const Text('精品'),
-                    selected: _goodOnly,
-                    onSelected: (_) {
-                      if (!_goodOnly) {
-                        _goodOnly = true;
-                        _resetAndLoad();
-                      }
-                    },
-                  ),
-                ],
+                ),
               ),
             ),
           ),
+        ),
+        Expanded(
+          child: IndexedStack(
+            index: _section < 2 ? 0 : _section - 1,
+            children: [
+              _forumBody(context),
+              for (final section in NewsSection.values)
+                NewsScreen(
+                  key: PageStorageKey('embedded-${section.name}'),
+                  fixedSection: section,
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _forumBody(BuildContext context) {
+    final pinned = _threads.where((item) => item.isTop).toList();
+    final regular = _threads.where((item) => !item.isTop).toList();
+    return RefreshIndicator(
+      onRefresh: _resetAndLoad,
+      child: CustomScrollView(
+        key: const PageStorageKey('tieba-scroll'),
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
           if (_forum case final forum?)
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
@@ -1861,6 +1892,10 @@ class _TiebaImageScreenState extends State<_TiebaImageScreen> {
   late final List<Future<String>?> _resolutionFutures;
   late int _index;
   bool _currentImageZoomed = false;
+  final _swipePointers = <int>{};
+  int? _swipePointer;
+  Offset? _swipeStart;
+  int? _swipeStartIndex;
 
   @override
   void initState() {
@@ -1908,6 +1943,50 @@ class _TiebaImageScreenState extends State<_TiebaImageScreen> {
     _resolveAround(index);
   }
 
+  void _onSwipePointerDown(PointerDownEvent event) {
+    _swipePointers.add(event.pointer);
+    if (_swipePointers.length == 1 && !_currentImageZoomed) {
+      _swipePointer = event.pointer;
+      _swipeStart = event.localPosition;
+      _swipeStartIndex = _index;
+    } else {
+      _swipePointer = null;
+    }
+  }
+
+  void _onSwipePointerUp(PointerUpEvent event) {
+    _swipePointers.remove(event.pointer);
+    final start = _swipeStart;
+    final startIndex = _swipeStartIndex;
+    final eligible =
+        event.pointer == _swipePointer &&
+        _swipePointers.isEmpty &&
+        !_currentImageZoomed &&
+        start != null &&
+        startIndex == _index;
+    _swipePointer = null;
+    _swipeStart = null;
+    _swipeStartIndex = null;
+    if (!eligible) return;
+    final delta = event.localPosition - start;
+    if (delta.dx.abs() < 72 || delta.dx.abs() < delta.dy.abs() * 1.5) {
+      return;
+    }
+    final target = (_index + (delta.dx < 0 ? 1 : -1))
+        .clamp(0, _urls.length - 1)
+        .toInt();
+    if (target != _index) {
+      _pageController.jumpToPage(target);
+    }
+  }
+
+  void _onSwipePointerCancel(PointerCancelEvent event) {
+    _swipePointers.remove(event.pointer);
+    _swipePointer = null;
+    _swipeStart = null;
+    _swipeStartIndex = null;
+  }
+
   Future<void> _save() async {
     try {
       final url = await _resolve(_index);
@@ -1943,24 +2022,29 @@ class _TiebaImageScreenState extends State<_TiebaImageScreen> {
           ),
         ],
       ),
-      body: PageView.builder(
-        key: const Key('tieba-image-gallery'),
-        controller: _pageController,
-        physics: _currentImageZoomed
-            ? const NeverScrollableScrollPhysics()
-            : const PageScrollPhysics(),
-        itemCount: count,
-        onPageChanged: _onPageChanged,
-        itemBuilder: (context, index) => _FocusedPhotoView(
-          url: _urls[index],
-          index: index,
-          onZoomChanged: index == _index
-              ? (zoomed) {
-                  if (_currentImageZoomed != zoomed) {
-                    setState(() => _currentImageZoomed = zoomed);
+      body: Listener(
+        onPointerDown: _onSwipePointerDown,
+        onPointerUp: _onSwipePointerUp,
+        onPointerCancel: _onSwipePointerCancel,
+        child: PageView.builder(
+          key: const Key('tieba-image-gallery'),
+          controller: _pageController,
+          physics: _currentImageZoomed
+              ? const NeverScrollableScrollPhysics()
+              : const PageScrollPhysics(),
+          itemCount: count,
+          onPageChanged: _onPageChanged,
+          itemBuilder: (context, index) => _FocusedPhotoView(
+            url: _urls[index],
+            index: index,
+            onZoomChanged: index == _index
+                ? (zoomed) {
+                    if (_currentImageZoomed != zoomed) {
+                      setState(() => _currentImageZoomed = zoomed);
+                    }
                   }
-                }
-              : null,
+                : null,
+          ),
         ),
       ),
     );

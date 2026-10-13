@@ -45,7 +45,12 @@ dependencies:
   url_launcher: ^6.3.2
   webview_flutter: ^4.14.1
   xml: ^7.0.1
-
+  sqflite: ^2.4.4+1
+  flutter_chat_ui: ^2.12.0
+  flutter_chat_core: ^2.9.1
+  flyer_chat_text_message: ^2.6.1
+  pdfrx: ^2.6.5
+  archive: ^4.5.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -59,6 +64,7 @@ dev_dependencies:
   integration_test:
     sdk: flutter
   pigeon: ^27.3.1
+  sqflite_common_ffi: ^2.4.3
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

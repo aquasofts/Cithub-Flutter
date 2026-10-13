@@ -6,6 +6,21 @@ import 'cithub_platform.dart';
 class DemoCithubPlatform implements CithubPlatform {
   DemoCithubPlatform({this.autoCaptcha = true});
 
+  String? _aiKey;
+  @override
+  Future<String?> readAiApiKey() async => _aiKey;
+  @override
+  Future<bool> writeAiApiKey(String value) async {
+    _aiKey = value;
+    return true;
+  }
+
+  @override
+  Future<bool> deleteAiApiKey() async {
+    _aiKey = null;
+    return true;
+  }
+
   final bool autoCaptcha;
   final _events = StreamController<NativeEventDto>.broadcast();
   bool _webVpnSignedIn = false;

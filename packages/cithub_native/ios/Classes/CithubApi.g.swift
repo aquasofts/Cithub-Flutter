@@ -3640,3 +3640,66 @@ class EventsStreamHandler: PigeonEventChannelWrapper<NativeEventDto> {
     channel.setStreamHandler(internalStreamHandler)
   }
 }
+
+/// Generated protocol from Pigeon that represents a handler of messages from Flutter.
+protocol AiSecretHostApi {
+  func readApiKey(completion: @escaping (Result<String?, Error>) -> Void)
+  func writeApiKey(value: String, completion: @escaping (Result<Bool, Error>) -> Void)
+  func deleteApiKey(completion: @escaping (Result<Bool, Error>) -> Void)
+}
+
+/// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
+class AiSecretHostApiSetup {
+  static var codec: FlutterStandardMessageCodec { CithubApiPigeonCodec.shared }
+  /// Sets up an instance of `AiSecretHostApi` to handle messages through the `binaryMessenger`.
+  static func setUp(binaryMessenger: FlutterBinaryMessenger, api: AiSecretHostApi?, messageChannelSuffix: String = "") {
+    let channelSuffix = messageChannelSuffix.count > 0 ? ".\(messageChannelSuffix)" : ""
+    let readApiKeyChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.cithub_flutter.AiSecretHostApi.readApiKey\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      readApiKeyChannel.setMessageHandler { _, reply in
+        api.readApiKey { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      readApiKeyChannel.setMessageHandler(nil)
+    }
+    let writeApiKeyChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.cithub_flutter.AiSecretHostApi.writeApiKey\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      writeApiKeyChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let valueArg = args[0] as! String
+        api.writeApiKey(value: valueArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      writeApiKeyChannel.setMessageHandler(nil)
+    }
+    let deleteApiKeyChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.cithub_flutter.AiSecretHostApi.deleteApiKey\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      deleteApiKeyChannel.setMessageHandler { _, reply in
+        api.deleteApiKey { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      deleteApiKeyChannel.setMessageHandler(nil)
+    }
+  }
+}

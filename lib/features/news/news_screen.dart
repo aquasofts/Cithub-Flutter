@@ -10,7 +10,8 @@ import 'news_html.dart';
 import 'news_repository.dart';
 
 class NewsScreen extends StatefulWidget {
-  const NewsScreen({super.key});
+  const NewsScreen({super.key, this.fixedSection});
+  final NewsSection? fixedSection;
 
   @override
   State<NewsScreen> createState() => _NewsScreenState();
@@ -29,6 +30,7 @@ class _NewsScreenState extends State<NewsScreen>
   @override
   void initState() {
     super.initState();
+    _selected = widget.fixedSection ?? NewsSection.wechat;
     _restore();
   }
 
@@ -39,10 +41,22 @@ class _NewsScreenState extends State<NewsScreen>
 
   Future<void> _refresh() async {
     if (_refreshing) return;
+    if (!NewsRepository.resumeRequests()) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('请等待限流时间结束后再刷新')));
+      return;
+    }
     setState(() => _refreshing = true);
     try {
-      final articles = await _repository.refresh();
+      final articles = widget.fixedSection == null
+          ? await _repository.refresh()
+          : await _repository.refreshSection(widget.fixedSection!);
       if (mounted) setState(() => _articles = articles);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('刷新失败，保留已有内容')));
+      }
     } finally {
       if (mounted) setState(() => _refreshing = false);
     }
@@ -62,7 +76,11 @@ class _NewsScreenState extends State<NewsScreen>
             pinned: true,
             toolbarHeight: 72,
             titleSpacing: 20,
-            title: const Text('新闻'),
+            title: Text(
+              widget.fixedSection == null
+                  ? '新闻'
+                  : ['公众号', '校内新闻', '官方新闻'][_selected.index],
+            ),
             actions: [
               if (_refreshing)
                 const Padding(
@@ -80,35 +98,36 @@ class _NewsScreenState extends State<NewsScreen>
                 ),
             ],
           ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 2, 16, 14),
-            sliver: SliverToBoxAdapter(
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _SectionChip(
-                    label: '公众号',
-                    selected: _selected == NewsSection.wechat,
-                    onSelected: () =>
-                        setState(() => _selected = NewsSection.wechat),
-                  ),
-                  _SectionChip(
-                    label: '校内新闻',
-                    selected: _selected == NewsSection.campus,
-                    onSelected: () =>
-                        setState(() => _selected = NewsSection.campus),
-                  ),
-                  _SectionChip(
-                    label: '官方新闻',
-                    selected: _selected == NewsSection.official,
-                    onSelected: () =>
-                        setState(() => _selected = NewsSection.official),
-                  ),
-                ],
+          if (widget.fixedSection == null)
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 2, 16, 14),
+              sliver: SliverToBoxAdapter(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _SectionChip(
+                      label: '公众号',
+                      selected: _selected == NewsSection.wechat,
+                      onSelected: () =>
+                          setState(() => _selected = NewsSection.wechat),
+                    ),
+                    _SectionChip(
+                      label: '校内新闻',
+                      selected: _selected == NewsSection.campus,
+                      onSelected: () =>
+                          setState(() => _selected = NewsSection.campus),
+                    ),
+                    _SectionChip(
+                      label: '官方新闻',
+                      selected: _selected == NewsSection.official,
+                      onSelected: () =>
+                          setState(() => _selected = NewsSection.official),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
           if (items.isEmpty)
             const SliverFillRemaining(
               hasScrollBody: false,

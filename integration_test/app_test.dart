@@ -21,13 +21,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('新闻'));
+    await tester.tap(find.text('AI'));
     await tester.pumpAndSettle();
-    expect(find.text('公众号'), findsOneWidget);
+    expect(find.text('先配置 AI 服务与模型'), findsOneWidget);
 
     await tester.tap(find.text('我的'));
     await tester.pumpAndSettle();
-    expect(find.text('关于 Cithub Flutter'), findsOneWidget);
+    expect(find.text('我的课表'), findsOneWidget);
 
     await tester.tap(find.text('贴吧'));
     await tester.pumpAndSettle();
@@ -37,9 +37,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('这是主题内容。'), findsOneWidget);
 
-    await tester.tap(find.text('新闻'));
+    await tester.tap(find.text('AI'));
     await tester.pumpAndSettle();
-    expect(find.text('公众号'), findsOneWidget);
+    expect(find.text('先配置 AI 服务与模型'), findsOneWidget);
 
     await tester.tap(find.text('贴吧'));
     await tester.pumpAndSettle();

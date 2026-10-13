@@ -1,6 +1,9 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+
+import '../timetable/academic_sync.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -76,7 +79,6 @@ class AcademicScreen extends ConsumerStatefulWidget {
 
 class _AcademicScreenState extends ConsumerState<AcademicScreen>
     with AutomaticKeepAliveClientMixin {
-  late Future<WebVpnSessionDto> _session;
   WebVpnSessionDto? _latestSession;
   Object? _sessionError;
   List<AcademicFeature> _features = [...academicFeatures];
@@ -87,9 +89,6 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen>
   @override
   void initState() {
     super.initState();
-    _session = _trackSession(
-      ref.read(cithubPlatformProvider).initializeWebVpn(),
-    );
     _restoreFeatureOrder();
   }
 
@@ -120,6 +119,11 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen>
     try {
       final session = await value;
       _latestSession = session;
+      if (session.status != AuthStatus.signedIn) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) ref.read(academicSessionProvider.notifier).state = null;
+        });
+      }
       if (mounted && _sessionError != null) {
         setState(() => _sessionError = null);
       }
@@ -147,7 +151,7 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen>
     if (!mounted) return;
     setState(() {
       _sessionError = null;
-      _session = _trackSession(
+      ref.read(webVpnSessionProvider.notifier).state = _trackSession(
         value,
         preserveOnError: true,
         recoverOnError: recoverOnError,
@@ -158,6 +162,7 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final session = ref.watch(webVpnSessionProvider);
     return CustomScrollView(
       key: const PageStorageKey('academic-scroll'),
       slivers: [
@@ -186,7 +191,7 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen>
           ],
         ),
         FutureBuilder<WebVpnSessionDto>(
-          future: _session,
+          future: session,
           builder: (context, snapshot) {
             if (snapshot.hasError) {
               return SliverFillRemaining(
@@ -204,6 +209,7 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen>
               );
             }
             final session = snapshot.requireData;
+            _latestSession = session;
             if (session.status != AuthStatus.signedIn) {
               return SliverPadding(
                 padding: const EdgeInsets.only(bottom: 32),
@@ -278,6 +284,7 @@ class _AcademicSessionSliverState
   late Future<WebVpnSessionDto> _session;
   WebVpnSessionDto? _latestSession;
   Object? _sessionError;
+  String? _syncedAccount;
 
   @override
   void initState() {
@@ -297,6 +304,19 @@ class _AcademicSessionSliverState
     try {
       final session = await value;
       _latestSession = session;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ref.read(academicSessionProvider.notifier).state = session;
+        final account = session.user?.username;
+        if (session.status == AuthStatus.signedIn &&
+            account != null &&
+            account != _syncedAccount) {
+          _syncedAccount = account;
+          syncAcademicSchedule(context, ref);
+        } else if (session.status != AuthStatus.signedIn) {
+          _syncedAccount = null;
+        }
+      });
       if (mounted && _sessionError != null) {
         setState(() => _sessionError = null);
       }

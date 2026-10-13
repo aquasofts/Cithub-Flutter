@@ -3804,3 +3804,77 @@ override fun onListen(p0: Any?, sink: PigeonEventSink<NativeEventDto>) {}
 override fun onCancel(p0: Any?) {}
 }
       
+/** Generated interface from Pigeon that represents a handler of messages from Flutter. */
+interface AiSecretHostApi {
+  fun readApiKey(callback: (Result<String?>) -> Unit)
+  fun writeApiKey(value: String, callback: (Result<Boolean>) -> Unit)
+  fun deleteApiKey(callback: (Result<Boolean>) -> Unit)
+
+  companion object {
+    /** The codec used by AiSecretHostApi. */
+    val codec: MessageCodec<Any?> by lazy {
+      CithubApiPigeonCodec()
+    }
+    /** Sets up an instance of `AiSecretHostApi` to handle messages through the `binaryMessenger`. */
+    @JvmOverloads
+    fun setUp(binaryMessenger: BinaryMessenger, api: AiSecretHostApi?, messageChannelSuffix: String = "") {
+      val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.cithub_flutter.AiSecretHostApi.readApiKey$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            api.readApiKey{ result: Result<String?> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(CithubApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(CithubApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.cithub_flutter.AiSecretHostApi.writeApiKey$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val valueArg = args[0] as String
+            api.writeApiKey(valueArg) { result: Result<Boolean> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(CithubApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(CithubApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.cithub_flutter.AiSecretHostApi.deleteApiKey$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            api.deleteApiKey{ result: Result<Boolean> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(CithubApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(CithubApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+    }
+  }
+}

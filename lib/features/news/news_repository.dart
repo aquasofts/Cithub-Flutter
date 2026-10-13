@@ -1,6 +1,9 @@
 import 'dart:convert';
+import 'dart:async';
 
 import '../../core/logging/runtime_log.dart';
+import '../../core/utils/request_queue.dart';
+import '../../core/utils/rate_limit.dart';
 
 import 'package:html/parser.dart' as html_parser;
 import 'package:http/http.dart' as http;
@@ -69,12 +72,12 @@ class NewsRepository {
     NewsSection.campus: ['https://cit-news.pages.dev/rss.xml'],
   };
 
-  Future<List<NewsArticle>> cached() async {
+  Future<List<NewsArticle>> cached({bool includeDemo = true}) async {
     final raw = (await SharedPreferences.getInstance()).getString(
       'news.cache.v1',
     );
-    if (raw == null) return demoNews;
-    return runCatchingArticles(raw) ?? demoNews;
+    if (raw == null) return includeDemo ? demoNews : [];
+    return runCatchingArticles(raw) ?? (includeDemo ? demoNews : []);
   }
 
   Future<List<NewsArticle>> refresh([
@@ -139,10 +142,86 @@ class NewsRepository {
     return articles;
   }
 
+  static final _aiQueue = RequestQueue();
+  static bool resumeRequests() => _aiQueue.resume();
+  Future<DateTime?> cachedAt(NewsSection section) async => DateTime.tryParse(
+    (await SharedPreferences.getInstance()).getString(
+          'news.updated.${section.name}',
+        ) ??
+        '',
+  );
+  Future<List<NewsArticle>> refreshSection(NewsSection section) async {
+    final prefs = await SharedPreferences.getInstance();
+    final loaded = <NewsArticle>[];
+    final check = Zone.current[requestCancellationKey] as void Function()?;
+    Future<void> fetch(
+      String key,
+      Future<List<NewsArticle>> Function() action,
+    ) async {
+      check?.call();
+      try {
+        loaded.addAll(await _aiQueue.run(key, action));
+      } catch (_) {
+        check?.call();
+      }
+    }
+
+    if (section == NewsSection.official) {
+      for (final source in _officialSources) {
+        await fetch(
+          'official:${source.ownerId}:${source.contentId}',
+          () => _loadOfficial(source),
+        );
+      }
+    } else {
+      final sources =
+          prefs.getStringList('rss.${section.name}') ??
+          defaultSources[section]!;
+      for (final url in sources.map((s) => s.trim()).toSet()) {
+        final uri = Uri.tryParse(url);
+        if (uri != null && uri.scheme == 'https' && uri.host.isNotEmpty) {
+          await fetch('feed:$url', () => _loadFeed(uri, section));
+        }
+      }
+    }
+    if (loaded.isEmpty) throw StateError('该来源暂时无法刷新');
+    final old = await cached(includeDemo: false);
+    final merged = <String, NewsArticle>{};
+    for (final article in [
+      ...loaded,
+      ...old.where((a) => a.section != section),
+    ]) {
+      merged.putIfAbsent(
+        '${article.section.name}:${article.link.isEmpty ? article.id : article.link}',
+        () => article,
+      );
+    }
+    final articles = merged.values.toList()
+      ..sort(
+        (a, b) => (b.publishedAt ?? DateTime(1970)).compareTo(
+          a.publishedAt ?? DateTime(1970),
+        ),
+      );
+    await prefs.setString(
+      'news.cache.v1',
+      jsonEncode(articles.map((a) => a.toJson()).toList()),
+    );
+    await prefs.setString(
+      'news.updated.${section.name}',
+      DateTime.now().toIso8601String(),
+    );
+    return articles;
+  }
+
   Future<List<NewsArticle>> _loadFeed(Uri uri, NewsSection section) async {
     final response = await _client
         .get(uri)
         .timeout(const Duration(seconds: 10));
+    if (response.statusCode == 429) {
+      throw RequestRateLimited(
+        retryAfterDelay(response.headers['retry-after']),
+      );
+    }
     if (response.statusCode != 200) {
       throw StateError('RSS HTTP ${response.statusCode}');
     }
@@ -175,6 +254,11 @@ class NewsRepository {
           body: envelope,
         )
         .timeout(const Duration(seconds: 15));
+    if (response.statusCode == 429) {
+      throw RequestRateLimited(
+        retryAfterDelay(response.headers['retry-after']),
+      );
+    }
     if (response.statusCode != 200) {
       throw StateError('官方新闻 HTTP ${response.statusCode}');
     }

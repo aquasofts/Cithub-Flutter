@@ -26,10 +26,11 @@ internal class AndroidAcademicApi(
     private val logs: RuntimeLogStore,
     private val executor: Executor,
     private val mainHandler: Handler,
+    private val renewWebVpn: () -> Boolean,
 ) : AcademicHostApi {
     private val client = AcademicProtocolClient(state.secureStore, logs)
     private val captchaRecognizer = CaptchaRecognizer()
-    @Volatile private var allowAutomaticLogin = true
+    @Volatile private var allowAutomaticLogin = state.secureStore.get("academic.auto_login_disabled") != "true"
     @Volatile private var browserSessionPending = false
     @Volatile private var captcha: CaptchaDto? = null
     @Volatile private var terms: List<AcademicTermDto> = emptyList()
@@ -80,6 +81,7 @@ internal class AndroidAcademicApi(
             } else request.password
             terms = client.login(username, password, request.captchaCode)
             allowAutomaticLogin = true
+            state.secureStore.remove("academic.auto_login_disabled")
             state.academicSignedIn = true
             state.academicUsername = username
             state.secureStore.put("academic.last_username", username)
@@ -158,6 +160,7 @@ internal class AndroidAcademicApi(
             val academicOrigin = client.webOrigin()
             client.logout()
             allowAutomaticLogin = false
+            state.secureStore.put("academic.auto_login_disabled", "true")
             clearAcademicWebViewCookie(academicOrigin)
             state.academicSignedIn = false
             state.academicUsername = null
@@ -181,7 +184,13 @@ internal class AndroidAcademicApi(
             action()
         } catch (error: AcademicLoginRequired) {
             state.academicSignedIn = false
-            if (!tryAutomaticLogin(state.academicUsername.orEmpty())) throw error
+            terms = emptyList()
+            if (!allowAutomaticLogin) throw error
+            val webVpnReady = runCatching { renewWebVpn() }.getOrElse {
+                logs.append("academic-auto-login-error", it.stackTraceToString())
+                false
+            }
+            if (!webVpnReady || !tryAutomaticLogin(state.academicUsername.orEmpty())) throw error
             action()
         }
     }
