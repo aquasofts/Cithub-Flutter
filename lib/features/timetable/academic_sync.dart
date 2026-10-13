@@ -1,3 +1,5 @@
+import '../../core/logging/runtime_audit.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -84,7 +86,7 @@ Future<void> syncAcademicSchedule(
     }
     if (answer == 'ai' && context.mounted) {
       await Navigator.of(context).push(
-        MaterialPageRoute<void>(
+        LoggedMaterialPageRoute<void>(
           builder: (_) => const AiScreen(initialText: '请更新教务课表。需要保留的修改是：'),
         ),
       );

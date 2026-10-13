@@ -1,13 +1,17 @@
+import '../../core/logging/runtime_log.dart';
+
 import 'dart:convert';
 
 import '../../core/storage/local_database.dart';
 import 'ai_attachments.dart';
+import 'ai_settings.dart';
 
 class AiConversation {
   AiConversation({
     required this.id,
     this.title = '新会话',
     this.model = '',
+    this.options = const AiGenerationOptions(),
     List<Map<String, dynamic>>? messages,
     List<Map<String, dynamic>>? display,
     List<AiAttachment>? attachments,
@@ -16,10 +20,12 @@ class AiConversation {
        attachments = attachments ?? [];
   final String id;
   String title, model;
+  AiGenerationOptions options;
   final List<Map<String, dynamic>> messages;
   final List<Map<String, dynamic>> display;
   final List<AiAttachment> attachments;
   Map<String, dynamic> toJson() => {
+    'options': options.toJson(),
     'messages': messages,
     'display': display,
     'attachments': attachments.map((a) => a.toJson()).toList(),
@@ -30,6 +36,9 @@ class AiConversation {
       id: row['id'] as String,
       title: row['title'] as String,
       model: row['model'] as String,
+      options: AiGenerationOptions.fromJson(
+        Map<String, dynamic>.from(body['options'] as Map? ?? {}),
+      ),
       messages: (body['messages'] as List)
           .map((m) => Map<String, dynamic>.from(m as Map))
           .toList(),
@@ -48,22 +57,37 @@ class AiConversation {
 class AiConversationRepository {
   AiConversationRepository(this.store);
   final LocalDatabase store;
-  Future<List<AiConversation>> all() async =>
+  Future<List<AiConversation>> all() =>
+      RuntimeLog.trace('conversation', 'list', null, _all);
+
+  Future<List<AiConversation>> _all() async =>
       (await (await store.database).query(
         'conversations',
         orderBy: 'updated_at DESC',
       )).map(AiConversation.fromRow).toList();
-  Future<void> save(AiConversation c) async => (await store.database).rawInsert(
-    'INSERT OR REPLACE INTO conversations(id,title,model,updated_at,messages) VALUES(?,?,?,?,?)',
-    [
-      c.id,
-      c.title,
-      c.model,
-      DateTime.now().toIso8601String(),
-      jsonEncode(c.toJson()),
-    ],
+  Future<void> save(AiConversation c) => RuntimeLog.trace(
+    'conversation',
+    'save',
+    {'id': c.id, 'title': c.title, 'model': c.model, 'body': c.toJson()},
+    () async => (await store.database).rawInsert(
+      'INSERT OR REPLACE INTO conversations(id,title,model,updated_at,messages) VALUES(?,?,?,?,?)',
+      [
+        c.id,
+        c.title,
+        c.model,
+        DateTime.now().toIso8601String(),
+        jsonEncode(c.toJson()),
+      ],
+    ),
   );
-  Future<void> delete(AiConversation c) async {
+  Future<void> delete(AiConversation c) => RuntimeLog.trace(
+    'conversation',
+    'delete',
+    {'id': c.id, 'body': c.toJson()},
+    () => _delete(c),
+  );
+
+  Future<void> _delete(AiConversation c) async {
     await (await store.database).delete(
       'conversations',
       where: 'id = ?',

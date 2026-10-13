@@ -1,3 +1,6 @@
+import '../../core/logging/web_audit.dart';
+import '../../core/logging/runtime_audit.dart';
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -5,7 +8,9 @@ import 'package:flutter/material.dart';
 import '../timetable/academic_sync.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../core/logging/logged_preferences.dart';
+
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../core/native/cithub_api.g.dart';
@@ -93,7 +98,7 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen>
   }
 
   Future<void> _restoreFeatureOrder() async {
-    final ids = (await SharedPreferences.getInstance()).getStringList(
+    final ids = (await LoggedPreferences.getInstance()).getStringList(
       'academic.featureOrder',
     );
     if (ids == null || !mounted) return;
@@ -177,7 +182,7 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen>
               onPressed: () async {
                 final ordered = await Navigator.of(context)
                     .push<List<AcademicFeature>>(
-                      MaterialPageRoute(
+                      LoggedMaterialPageRoute(
                         builder: (_) =>
                             AcademicFeatureOrderScreen(initial: _features),
                       ),
@@ -839,7 +844,7 @@ class _AcademicFeatureCard extends StatelessWidget {
           _ => AcademicWebScreen(feature: feature),
         };
         await Navigator.of(context)
-            .push(MaterialPageRoute(builder: (_) => page));
+            .push(LoggedMaterialPageRoute(builder: (_) => page));
         onReturn?.call();
       },
       child: Padding(
@@ -1343,7 +1348,7 @@ class EvaluationScreen extends ConsumerWidget {
           trailing: const Icon(Icons.chevron_right),
           onTap: () async {
             await Navigator.of(context).push(
-              MaterialPageRoute(
+              LoggedMaterialPageRoute(
                 builder: (_) => EvaluationCoursesScreen(batch: item),
               ),
             );
@@ -1386,7 +1391,7 @@ class EvaluationCoursesScreen extends ConsumerWidget {
           ),
           onTap: () async {
             await Navigator.of(context).push(
-              MaterialPageRoute(
+              LoggedMaterialPageRoute(
                 builder: (_) => EvaluationFormScreen(course: item),
               ),
             );
@@ -2182,6 +2187,7 @@ class _AcademicWebScreenState extends ConsumerState<AcademicWebScreen> {
           .read(cithubPlatformProvider)
           .prepareAcademicWebPage(widget.feature.webPath!);
       final controller = WebViewController();
+      await configureWebAudit(controller, 'academic-web-audit');
       await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
       await controller.setOnConsoleMessage(
         (message) => RuntimeLog.write(
@@ -2216,6 +2222,7 @@ class _AcademicWebScreenState extends ConsumerState<AcademicWebScreen> {
           },
           onPageFinished: (url) async {
             RuntimeLog.write('academic-web', 'FINISH $url');
+            await controller.runJavaScript(webAuditScript);
             final back = await controller.canGoBack();
             if (mounted) {
               setState(() {
@@ -2313,7 +2320,7 @@ Future<void> _openOriginalAcademicPage(
   String path,
 ) async {
   await Navigator.of(context).push(
-    MaterialPageRoute(
+    LoggedMaterialPageRoute(
       builder: (_) => AcademicWebScreen(
         feature: AcademicFeature(
           'original',
@@ -2352,7 +2359,7 @@ class _AcademicFeatureOrderScreenState
   late final _items = [...widget.initial];
 
   Future<void> _save() async {
-    await (await SharedPreferences.getInstance()).setStringList(
+    await (await LoggedPreferences.getInstance()).setStringList(
       'academic.featureOrder',
       _items.map((item) => item.id).toList(),
     );

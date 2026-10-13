@@ -7,7 +7,9 @@ import '../../core/utils/rate_limit.dart';
 
 import 'package:html/parser.dart' as html_parser;
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../core/logging/logged_preferences.dart';
+
 import 'package:xml/xml.dart';
 
 enum NewsSection { wechat, campus, official }
@@ -62,8 +64,10 @@ class NewsArticle {
 
 class NewsRepository {
   NewsRepository({http.Client? client})
-    : _client = client ?? LoggingHttpClient(http.Client());
+    : _client = LoggingHttpClient(client ?? http.Client());
   final http.Client _client;
+
+  void close() => _client.close();
 
   static const defaultSources = {
     NewsSection.wechat: [
@@ -73,145 +77,135 @@ class NewsRepository {
   };
 
   Future<List<NewsArticle>> cached({bool includeDemo = true}) async {
-    final raw = (await SharedPreferences.getInstance()).getString(
+    final raw = (await LoggedPreferences.getInstance()).getString(
       'news.cache.v1',
     );
     if (raw == null) return includeDemo ? demoNews : [];
     return runCatchingArticles(raw) ?? (includeDemo ? demoNews : []);
   }
 
-  Future<List<NewsArticle>> refresh([
-    Map<NewsSection, List<String>>? sources,
-  ]) async {
-    final preferences = await SharedPreferences.getInstance();
-    final selected =
-        sources ??
-        {
-          NewsSection.wechat:
-              preferences.getStringList('rss.wechat') ??
-              defaultSources[NewsSection.wechat]!,
-          NewsSection.campus:
-              preferences.getStringList('rss.campus') ??
-              defaultSources[NewsSection.campus]!,
-        };
-    final tasks = <Future<List<NewsArticle>>>[];
-    for (final entry in selected.entries) {
-      for (final url in entry.value.map((item) => item.trim()).toSet()) {
-        if (Uri.tryParse(url) case final uri?
-            when uri.scheme == 'https' && uri.host.isNotEmpty) {
-          tasks.add(_loadFeed(uri, entry.key));
-        }
-      }
-    }
-    for (final source in _officialSources) {
-      tasks.add(_loadOfficial(source));
-    }
-    final results = await Future.wait(
-      tasks.map((task) async {
-        try {
-          return await task;
-        } catch (_) {
-          return <NewsArticle>[];
-        }
-      }),
-    );
-    final loaded = results.expand((items) => items).toList();
-    if (loaded.isEmpty) {
-      final stale = preferences.getString('news.cache.v1');
-      return stale == null
-          ? demoNews
-          : (runCatchingArticles(stale) ?? demoNews);
-    }
-    final merged = <String, NewsArticle>{};
-    for (final article in loaded) {
-      final key = article.section == NewsSection.official
-          ? article.id
-          : (article.link.isEmpty ? article.id : article.link);
-      merged.putIfAbsent(key, () => article);
-    }
-    final articles = merged.values.toList()
-      ..sort(
-        (a, b) => (b.publishedAt ?? DateTime(1970)).compareTo(
-          a.publishedAt ?? DateTime(1970),
-        ),
-      );
-    await (await SharedPreferences.getInstance()).setString(
-      'news.cache.v1',
-      jsonEncode(articles.map((item) => item.toJson()).toList()),
-    );
-    return articles;
-  }
-
-  static final _aiQueue = RequestQueue();
+  final failures = <String>[];
+  static final _aiQueue = RequestQueue(
+    interval: Duration.zero,
+    cacheTtl: Duration.zero,
+  );
   static bool resumeRequests() => _aiQueue.resume();
+
   Future<DateTime?> cachedAt(NewsSection section) async => DateTime.tryParse(
-    (await SharedPreferences.getInstance()).getString(
+    (await LoggedPreferences.getInstance()).getString(
           'news.updated.${section.name}',
         ) ??
         '',
   );
-  Future<List<NewsArticle>> refreshSection(NewsSection section) async {
-    final prefs = await SharedPreferences.getInstance();
-    final loaded = <NewsArticle>[];
-    final check = Zone.current[requestCancellationKey] as void Function()?;
-    Future<void> fetch(
-      String key,
-      Future<List<NewsArticle>> Function() action,
-    ) async {
-      check?.call();
-      try {
-        loaded.addAll(await _aiQueue.run(key, action));
-      } catch (_) {
-        check?.call();
-      }
-    }
 
-    if (section == NewsSection.official) {
-      for (final source in _officialSources) {
-        await fetch(
-          'official:${source.ownerId}:${source.contentId}',
-          () => _loadOfficial(source),
+  Future<List<NewsArticle>> refresh([
+    Map<NewsSection, List<String>>? sources,
+  ]) async {
+    final prefs = await LoggedPreferences.getInstance();
+    return _refresh({
+      ...sources ??
+          {
+            for (final section in [NewsSection.wechat, NewsSection.campus])
+              section:
+                  prefs.getStringList('rss.${section.name}') ??
+                  defaultSources[section]!,
+          },
+      NewsSection.official: _officialSources.map((s) => s.listUrl).toList(),
+    });
+  }
+
+  Future<List<NewsArticle>> refreshSection(NewsSection section) async {
+    final prefs = await LoggedPreferences.getInstance();
+    return _refresh({
+      section: section == NewsSection.official
+          ? _officialSources.map((s) => s.listUrl).toList()
+          : prefs.getStringList('rss.${section.name}') ??
+                defaultSources[section]!,
+    });
+  }
+
+  Future<List<NewsArticle>> _refresh(
+    Map<NewsSection, List<String>> sources,
+  ) => RuntimeLog.trace(
+    'news',
+    'refresh',
+    {'sources': sources.map((k, v) => MapEntry(k.name, v))},
+    () async {
+      failures.clear();
+      final prefs = await LoggedPreferences.getInstance();
+      final old = await cached(includeDemo: false);
+      final loaded = <NewsArticle>[];
+      final completed = <NewsSection>{};
+      final check = Zone.current[requestCancellationKey] as void Function()?;
+      for (final entry in sources.entries) {
+        var complete = true;
+        for (final url in entry.value.map((s) => s.trim()).toSet()) {
+          check?.call();
+          try {
+            final uri = Uri.parse(url);
+            if (uri.scheme != 'https' || uri.host.isEmpty) {
+              throw StateError('新闻源地址无效：$url');
+            }
+            loaded.addAll(
+              await _aiQueue.run('news:$url', () {
+                if (entry.key == NewsSection.official) {
+                  final source = _officialSources.firstWhere(
+                    (s) => s.listUrl == url,
+                  );
+                  return _loadOfficial(source);
+                }
+                return _loadFeed(uri, entry.key);
+              }),
+            );
+          } catch (error, stack) {
+            check?.call();
+            complete = false;
+            failures.add(url);
+            RuntimeLog.event('news', 'source-failed', {
+              'url': url,
+              'error': '$error',
+              'stack': '$stack',
+            });
+          }
+        }
+        if (complete && entry.value.isNotEmpty) completed.add(entry.key);
+      }
+      check?.call();
+      if (loaded.isEmpty) throw StateError('新闻暂时无法加载，请稍后重试');
+      final merged = <String, NewsArticle>{};
+      for (final article in [
+        ...loaded,
+        ...old.where((a) => !completed.contains(a.section)),
+      ]) {
+        merged.putIfAbsent(
+          '${article.section.name}:${article.link.isEmpty ? article.id : article.link}',
+          () => article,
         );
       }
-    } else {
-      final sources =
-          prefs.getStringList('rss.${section.name}') ??
-          defaultSources[section]!;
-      for (final url in sources.map((s) => s.trim()).toSet()) {
-        final uri = Uri.tryParse(url);
-        if (uri != null && uri.scheme == 'https' && uri.host.isNotEmpty) {
-          await fetch('feed:$url', () => _loadFeed(uri, section));
-        }
+      final articles = merged.values.toList()
+        ..sort(
+          (a, b) => (b.publishedAt ?? DateTime(1970)).compareTo(
+            a.publishedAt ?? DateTime(1970),
+          ),
+        );
+      RuntimeLog.event('news', 'cache-change', {
+        'before': old.map((a) => a.toJson()).toList(),
+        'after': articles.map((a) => a.toJson()).toList(),
+        'failedSources': failures,
+      });
+      await prefs.setString(
+        'news.cache.v1',
+        jsonEncode(articles.map((a) => a.toJson()).toList()),
+      );
+      for (final section in completed) {
+        await prefs.setString(
+          'news.updated.${section.name}',
+          DateTime.now().toIso8601String(),
+        );
       }
-    }
-    if (loaded.isEmpty) throw StateError('该来源暂时无法刷新');
-    final old = await cached(includeDemo: false);
-    final merged = <String, NewsArticle>{};
-    for (final article in [
-      ...loaded,
-      ...old.where((a) => a.section != section),
-    ]) {
-      merged.putIfAbsent(
-        '${article.section.name}:${article.link.isEmpty ? article.id : article.link}',
-        () => article,
-      );
-    }
-    final articles = merged.values.toList()
-      ..sort(
-        (a, b) => (b.publishedAt ?? DateTime(1970)).compareTo(
-          a.publishedAt ?? DateTime(1970),
-        ),
-      );
-    await prefs.setString(
-      'news.cache.v1',
-      jsonEncode(articles.map((a) => a.toJson()).toList()),
-    );
-    await prefs.setString(
-      'news.updated.${section.name}',
-      DateTime.now().toIso8601String(),
-    );
-    return articles;
-  }
+      return articles;
+    },
+  );
 
   Future<List<NewsArticle>> _loadFeed(Uri uri, NewsSection section) async {
     final response = await _client
@@ -233,26 +227,15 @@ class NewsRepository {
   }
 
   Future<List<NewsArticle>> _loadOfficial(_OfficialSource source) async {
-    final envelope =
-        '''
-      <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:web="http://webservice.vsb.webber">
-        <soapenv:Header/><soapenv:Body><web:getListByContentId soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-          <owner xsi:type="xsd:string">${source.ownerId}</owner>
-          <contentid xsi:type="xsd:string">${source.contentId}</contentid>
-          <start xsi:type="xsd:int">0</start><count xsi:type="xsd:int">100</count>
-        </web:getListByContentId></soapenv:Body>
-      </soapenv:Envelope>
-    ''';
+    return RuntimeLog.trace('news', 'load-official', {
+      'source': source.title,
+      'url': source.listUrl,
+    }, () => _loadOfficialPage(source));
+  }
+
+  Future<List<NewsArticle>> _loadOfficialPage(_OfficialSource source) async {
     final response = await _client
-        .post(
-          Uri.parse('https://gateway.ccit.edu.cn/ccit/news/getList'),
-          headers: const {
-            'Accept': 'text/xml, application/xml;q=0.9',
-            'Content-Type': 'text/xml; charset=utf-8',
-            'User-Agent': 'Cithub Official News Reader',
-          },
-          body: envelope,
-        )
+        .get(Uri.parse(source.listUrl))
         .timeout(const Duration(seconds: 15));
     if (response.statusCode == 429) {
       throw RequestRateLimited(
@@ -262,50 +245,152 @@ class NewsRepository {
     if (response.statusCode != 200) {
       throw StateError('官方新闻 HTTP ${response.statusCode}');
     }
-    final document = XmlDocument.parse(utf8.decode(response.bodyBytes));
-    final payload = document.descendants
-        .whereType<XmlElement>()
-        .firstWhere(
-          (element) =>
-              element.name.local.toLowerCase() == 'getlistbycontentidreturn',
-        )
-        .innerText;
-    final decoded = jsonDecode(payload) as List<Object?>;
-    return decoded.map((raw) {
-      final item = raw! as Map<String, Object?>;
-      final markup = item['content']?.toString() ?? '';
-      final summary = html_parser.parseFragment(markup).text?.trim() ?? '';
-      final rawTitle = item['title']?.toString().trim() ?? '';
-      return NewsArticle(
-        id: '${source.ownerId}:${item['id']}',
-        source: source.title,
-        title: rawTitle.isEmpty ? '无标题' : rawTitle,
-        link: source.baseUrl,
-        summary: summary.length > 160
-            ? '${summary.substring(0, 160)}…'
-            : summary,
-        html: markup,
-        publishedAt: DateTime.tryParse(item['date']?.toString() ?? ''),
-        section: NewsSection.official,
-        coverUrl: _firstImage(markup, baseUrl: source.baseUrl),
-      );
-    }).toList();
+    final listed = parseOfficialList(
+      utf8.decode(response.bodyBytes, allowMalformed: true),
+      source: source.title,
+      listUrl: source.listUrl,
+    );
+    if (listed.isEmpty) throw StateError('官方新闻列表为空或页面结构已变化');
+    return listed;
   }
+
+  Future<NewsArticle> readArticle(
+    NewsArticle article,
+  ) => RuntimeLog.trace('news', 'read-article', article.toJson(), () async {
+    if (article.html.isNotEmpty) return article;
+    final uri = Uri.parse(article.link);
+    if (uri.scheme != 'https' || uri.host.isEmpty) throw StateError('文章链接无效');
+    final response = await _client
+        .get(uri)
+        .timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) {
+      throw StateError('正文 HTTP ${response.statusCode}');
+    }
+    final page = html_parser.parse(
+      utf8.decode(response.bodyBytes, allowMalformed: true),
+    );
+    final body = page.querySelector(
+      '#vsb_content, .v_news_content, article, #js_content',
+    );
+    if (body == null || body.text.trim().isEmpty) {
+      throw StateError('正文暂时无法读取，请在浏览器打开原文');
+    }
+    for (final node in body.querySelectorAll('script,style,nav')) {
+      node.remove();
+    }
+    final summary = body.text.trim();
+    return NewsArticle(
+      id: article.id,
+      source: article.source,
+      title: article.title,
+      link: article.link,
+      summary: summary.length > 160 ? '${summary.substring(0, 160)}…' : summary,
+      html: body.innerHtml,
+      publishedAt: article.publishedAt,
+      section: article.section,
+      coverUrl: article.coverUrl.isEmpty
+          ? _firstImage(body.innerHtml, baseUrl: article.link)
+          : article.coverUrl,
+    );
+  });
 }
 
 class _OfficialSource {
-  const _OfficialSource(this.title, this.ownerId, this.contentId, this.baseUrl);
+  const _OfficialSource(this.title, this.listUrl);
   final String title;
-  final String ownerId;
-  final String contentId;
-  final String baseUrl;
+  final String listUrl;
 }
 
 const _officialSources = [
-  _OfficialSource('学校新闻', '2144790275', '1074518', 'https://www.ccit.edu.cn/'),
-  _OfficialSource('通知公告', '2144790275', '1074519', 'https://www.ccit.edu.cn/'),
-  _OfficialSource('学术新闻', '1913672758', '1073128', 'https://kjc.ccit.edu.cn/'),
+  _OfficialSource('学校新闻', 'https://www.ccit.edu.cn/index/xxyw.htm'),
+  _OfficialSource('通知公告', 'https://www.ccit.edu.cn/index/xxgg.htm'),
+  _OfficialSource('学术新闻', 'https://kjc.ccit.edu.cn/sylm/kjxw1.htm'),
 ];
+
+List<NewsArticle> parseOfficialList(
+  String markup, {
+  required String source,
+  required String listUrl,
+}) {
+  final page = html_parser.parse(markup);
+  final base = Uri.parse(listUrl);
+  final rows = page.querySelectorAll('.listimg > li, .listpage > li');
+  final academic = rows.isEmpty;
+  final candidates = academic
+      ? page.querySelectorAll('a[href*="info/"]')
+      : rows;
+  final output = <NewsArticle>[];
+  final seen = <String>{};
+  for (final row in candidates) {
+    final anchor = academic ? row : row.querySelector('a[href]');
+    if (anchor == null) continue;
+    final link = safeNewsUrl(anchor.attributes['href'] ?? '', baseUrl: base);
+    if (link.isEmpty ||
+        !Uri.parse(link).path.contains('/info/') ||
+        !seen.add(link)) {
+      continue;
+    }
+    final title =
+        (academic
+                ? anchor.attributes['title'] ?? anchor.text
+                : row.querySelector('h1')?.text ??
+                      row.querySelector('h2')?.text ??
+                      anchor.attributes['title'] ??
+                      anchor.text)
+            .trim();
+    if (title.isEmpty) continue;
+    String date = '';
+    if (academic) {
+      var row = anchor.parent;
+      while (row != null && row.localName != 'tr' && row.localName != 'li') {
+        row = row.parent;
+      }
+      if (row != null) {
+        date =
+            RegExp(r'20\d{2}-\d{1,2}-\d{1,2}').firstMatch(row.text)?.group(0) ??
+            '';
+      } else {
+        // The research site emits tr/td outside a table. HTML parsing removes
+        // those wrappers, so associate a date only with this anchor's siblings.
+        var sibling = anchor.nextElementSibling;
+        while (sibling != null) {
+          if (sibling.localName == 'a' ||
+              sibling.querySelector('a[href*="info/"]') != null) {
+            break;
+          }
+          final text = sibling.text;
+          final match = RegExp(r'20\d{2}-\d{1,2}-\d{1,2}').firstMatch(text);
+          if (match != null) {
+            date = match.group(0)!;
+            break;
+          }
+          sibling = sibling.nextElementSibling;
+        }
+      }
+    } else {
+      final year = row.querySelector('.time h6')?.text.trim() ?? '';
+      final monthDay = row.querySelector('.time h3')?.text.trim() ?? '';
+      date = '$year-${monthDay.replaceAll('.', '-')}';
+    }
+    final excerpt = row.querySelector('p')?.text.trim() ?? '';
+    final cover = row.querySelector('img')?.attributes['src'] ?? '';
+    output.add(
+      NewsArticle(
+        id: link,
+        source: source,
+        title: title,
+        link: link,
+        summary: excerpt,
+        html: '',
+        publishedAt: DateTime.tryParse(date),
+        section: NewsSection.official,
+        coverUrl: safeNewsUrl(cover, baseUrl: base),
+      ),
+    );
+    if (output.length >= 10) break;
+  }
+  return output;
+}
 
 List<NewsArticle> parseFeed(
   List<int> bytes, {

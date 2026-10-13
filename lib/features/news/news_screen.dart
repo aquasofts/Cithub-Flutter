@@ -1,3 +1,9 @@
+import 'dart:async';
+
+import '../../core/logging/runtime_log.dart';
+import '../../core/logging/web_audit.dart';
+import '../../core/logging/runtime_audit.dart';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -10,7 +16,14 @@ import 'news_html.dart';
 import 'news_repository.dart';
 
 class NewsScreen extends StatefulWidget {
-  const NewsScreen({super.key, this.fixedSection});
+  const NewsScreen({
+    super.key,
+    this.fixedSection,
+    this.repository,
+    this.active = true,
+  });
+  final NewsRepository? repository;
+  final bool active;
   final NewsSection? fixedSection;
 
   @override
@@ -19,8 +32,12 @@ class NewsScreen extends StatefulWidget {
 
 class _NewsScreenState extends State<NewsScreen>
     with AutomaticKeepAliveClientMixin {
-  final _repository = NewsRepository();
-  List<NewsArticle> _articles = demoNews;
+  late final NewsRepository _repository;
+  List<NewsArticle> _articles = [];
+  String? _error;
+  bool _restoring = true;
+  bool _restored = false;
+  bool _activated = false;
   NewsSection _selected = NewsSection.wechat;
   bool _refreshing = false;
 
@@ -30,35 +47,121 @@ class _NewsScreenState extends State<NewsScreen>
   @override
   void initState() {
     super.initState();
+    _repository = widget.repository ?? NewsRepository();
     _selected = widget.fixedSection ?? NewsSection.wechat;
-    _restore();
+    RuntimeLog.event('news-page', 'opened', {'section': _selected.name});
+    _restoring = widget.active;
+    if (widget.active) _restore();
+  }
+
+  @override
+  void dispose() {
+    RuntimeLog.event('news-page', 'closed', {'section': _selected.name});
+    if (widget.repository == null) _repository.close();
+    super.dispose();
   }
 
   Future<void> _restore() async {
-    final cached = await _repository.cached();
-    if (mounted) setState(() => _articles = cached);
+    _restored = true;
+    try {
+      final cached = await RuntimeLog.trace('news-page', 'restore', {
+        'section': _selected.name,
+      }, () => _repository.cached(includeDemo: false));
+      if (!mounted) return;
+      setState(() {
+        _articles = cached;
+        _restoring = false;
+      });
+      await _activate();
+    } catch (error, stack) {
+      RuntimeLog.event('news-page', 'restore-failed', {
+        'error': '$error',
+        'stack': '$stack',
+      });
+      if (!mounted) return;
+      setState(() => _restoring = false);
+      if (widget.active) await _refresh();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant NewsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !oldWidget.active) {
+      if (_restored) {
+        unawaited(_activate());
+      } else {
+        setState(() => _restoring = true);
+        unawaited(_restore());
+      }
+    }
+  }
+
+  Future<void> _activate() async {
+    if (!widget.active || _activated || _restoring) return;
+    _activated = true;
+    final updated = await _repository.cachedAt(_selected);
+    if (!mounted || !widget.active) {
+      _activated = false;
+      return;
+    }
+    if (updated == null ||
+        DateTime.now().difference(updated) > const Duration(minutes: 5) ||
+        !_articles.any((a) => a.section == _selected)) {
+      await _refresh();
+    }
+  }
+
+  void _selectSection(NewsSection section) {
+    RuntimeLog.event('news-page', 'section-selected', {
+      'before': _selected.name,
+      'after': section.name,
+    });
+    setState(() {
+      _selected = section;
+      _error = null;
+    });
+    if (!_articles.any((a) => a.section == section)) unawaited(_refresh());
   }
 
   Future<void> _refresh() async {
-    if (_refreshing) return;
+    if (_refreshing || !mounted) return;
+    final section = _selected;
     if (!NewsRepository.resumeRequests()) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('请等待限流时间结束后再刷新')));
+      RuntimeLog.event('news-page', 'refresh-rate-limited', {
+        'section': section.name,
+      });
+      setState(() => _error = '请求暂时受限，请稍后重试');
       return;
     }
-    setState(() => _refreshing = true);
+    setState(() {
+      _refreshing = true;
+      _error = null;
+    });
     try {
-      final articles = widget.fixedSection == null
-          ? await _repository.refresh()
-          : await _repository.refreshSection(widget.fixedSection!);
-      if (mounted) setState(() => _articles = articles);
-    } catch (_) {
+      final articles = await RuntimeLog.trace('news-page', 'refresh', {
+        'section': section.name,
+      }, () => _repository.refreshSection(section));
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('刷新失败，保留已有内容')));
+        setState(() {
+          _articles = articles;
+          _error = _repository.failures.isEmpty ? null : '部分来源暂时不可用，已保留缓存';
+        });
       }
+    } catch (error, stack) {
+      RuntimeLog.event('news-page', 'refresh-failed', {
+        'section': section.name,
+        'error': '$error',
+        'stack': '$stack',
+      });
+      if (mounted) setState(() => _error = '暂时无法加载，请检查网络后重试');
     } finally {
       if (mounted) setState(() => _refreshing = false);
+    }
+    if (mounted &&
+        _selected != section &&
+        !_articles.any((a) => a.section == _selected)) {
+      await _refresh();
     }
   }
 
@@ -109,29 +212,77 @@ class _NewsScreenState extends State<NewsScreen>
                     _SectionChip(
                       label: '公众号',
                       selected: _selected == NewsSection.wechat,
-                      onSelected: () =>
-                          setState(() => _selected = NewsSection.wechat),
+                      onSelected: () => _selectSection(NewsSection.wechat),
                     ),
                     _SectionChip(
                       label: '校内新闻',
                       selected: _selected == NewsSection.campus,
-                      onSelected: () =>
-                          setState(() => _selected = NewsSection.campus),
+                      onSelected: () => _selectSection(NewsSection.campus),
                     ),
                     _SectionChip(
                       label: '官方新闻',
                       selected: _selected == NewsSection.official,
-                      onSelected: () =>
-                          setState(() => _selected = NewsSection.official),
+                      onSelected: () => _selectSection(NewsSection.official),
                     ),
                   ],
                 ),
               ),
             ),
+          if (_error != null && items.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                child: Text(
+                  _error!,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ),
           if (items.isEmpty)
-            const SliverFillRemaining(
+            SliverFillRemaining(
               hasScrollBody: false,
-              child: Center(child: Text('暂无内容，下拉刷新')),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(28),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_refreshing || _restoring)
+                        const CircularProgressIndicator()
+                      else
+                        Icon(
+                          Icons.newspaper_outlined,
+                          size: 52,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      const SizedBox(height: 20),
+                      Text(
+                        _refreshing || _restoring ? '正在加载校园资讯…' : '校园资讯',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _error ??
+                            (_refreshing || _restoring
+                                ? '稍等片刻，最新消息即将呈现'
+                                : '暂无新闻，可下拉刷新'),
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                      if (!_refreshing && !_restoring) ...[
+                        const SizedBox(height: 20),
+                        FilledButton.tonalIcon(
+                          onPressed: _refresh,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('重新加载'),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
             )
           else
             SliverPadding(
@@ -181,7 +332,9 @@ class _NewsCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => ArticleScreen(article: article)),
+          LoggedMaterialPageRoute(
+            builder: (_) => ArticleScreen(article: article),
+          ),
         ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
@@ -221,7 +374,7 @@ class _NewsCard extends StatelessWidget {
                       children: [
                         Text(
                           article.title,
-                          maxLines: 2,
+                          maxLines: 3,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
@@ -244,8 +397,10 @@ class _NewsCard extends StatelessWidget {
                       child: CachedNetworkImage(
                         key: const Key('news-thumbnail'),
                         imageUrl: article.coverUrl,
-                        width: 104,
-                        height: 104,
+                        width: MediaQuery.sizeOf(context).width < 360 ? 76 : 96,
+                        height: MediaQuery.sizeOf(context).width < 360
+                            ? 76
+                            : 96,
                         fit: BoxFit.cover,
                         errorWidget: (_, _, _) => const SizedBox.shrink(),
                       ),
@@ -273,11 +428,17 @@ class ArticleScreen extends StatefulWidget {
 class _ArticleScreenState extends State<ArticleScreen> {
   late final WebViewController _controller;
   bool _loading = true;
+  bool _fetching = false;
+  String? _loadError;
+  late NewsArticle _article;
+  final _repository = NewsRepository();
+  late final Future<void> _auditReady;
   int? _themeSignature;
 
   @override
   void initState() {
     super.initState();
+    _article = widget.article;
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.transparent)
@@ -287,7 +448,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
           final uri = Uri.tryParse(message.message);
           if (!mounted || uri == null || uri.scheme != 'https') return;
           Navigator.of(context).push(
-            MaterialPageRoute(
+            LoggedMaterialPageRoute(
               builder: (_) => _NewsImageScreen(url: uri.toString()),
             ),
           );
@@ -295,12 +456,21 @@ class _ArticleScreenState extends State<ArticleScreen> {
       )
       ..setNavigationDelegate(
         NavigationDelegate(
-          onPageStarted: (_) {
+          onPageStarted: (url) {
+            RuntimeLog.event('news-webview', 'load-start', {'url': url});
             if (mounted) setState(() => _loading = true);
           },
-          onPageFinished: (_) {
+          onPageFinished: (url) {
+            RuntimeLog.event('news-webview', 'load-finished', {'url': url});
+            unawaited(_controller.runJavaScript(webAuditScript));
             if (mounted) setState(() => _loading = false);
           },
+          onWebResourceError: (error) =>
+              RuntimeLog.event('news-webview', 'resource-failed', {
+                'url': error.url,
+                'code': error.errorCode,
+                'description': error.description,
+              }),
           onNavigationRequest: (request) {
             final uri = Uri.tryParse(request.url);
             if (uri?.scheme == 'data' || uri?.scheme == 'about') {
@@ -313,6 +483,58 @@ class _ArticleScreenState extends State<ArticleScreen> {
           },
         ),
       );
+    _auditReady = configureWebAudit(_controller, 'news-webview');
+    RuntimeLog.event('news-webview', 'observability', {
+      'article': widget.article.toJson(),
+      'network': '正文由 LoggingHttpClient 完整记录；WebView 图片等子资源仅记录 Resource Timing 元数据，不提供请求头或响应体。',
+    });
+    if (_article.html.isEmpty && _article.link.isNotEmpty) {
+      unawaited(_loadArticle());
+    }
+  }
+
+  @override
+  void dispose() {
+    _repository.close();
+    super.dispose();
+  }
+
+  Future<void> _loadArticle() async {
+    if (_fetching) return;
+    setState(() {
+      _fetching = true;
+      _loadError = null;
+    });
+    try {
+      final article = await _repository.readArticle(widget.article);
+      if (!mounted) return;
+      setState(() => _article = article);
+      await _render();
+    } catch (error, stack) {
+      RuntimeLog.event('news-page', 'article-failed', {
+        'url': widget.article.link,
+        'error': '$error',
+        'stack': '$stack',
+      });
+      if (mounted) setState(() => _loadError = '正文加载失败，可重试或在浏览器打开原文');
+    } finally {
+      if (mounted) setState(() => _fetching = false);
+    }
+  }
+
+  Future<void> _render() async {
+    await _auditReady;
+    if (!mounted) return;
+    final theme = Theme.of(context);
+    await _controller.loadHtmlString(
+      buildSafeNewsHtml(
+        _article,
+        backgroundColor: _cssColor(theme.colorScheme.surface),
+        textColor: _cssColor(theme.colorScheme.onSurface),
+        secondaryTextColor: _cssColor(theme.colorScheme.onSurfaceVariant),
+        linkColor: _cssColor(theme.colorScheme.primary),
+      ),
+    );
   }
 
   @override
@@ -327,15 +549,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
     );
     if (_themeSignature == signature) return;
     _themeSignature = signature;
-    _controller.loadHtmlString(
-      buildSafeNewsHtml(
-        widget.article,
-        backgroundColor: _cssColor(theme.colorScheme.surface),
-        textColor: _cssColor(theme.colorScheme.onSurface),
-        secondaryTextColor: _cssColor(theme.colorScheme.onSurfaceVariant),
-        linkColor: _cssColor(theme.colorScheme.primary),
-      ),
-    );
+    unawaited(_render());
   }
 
   @override
@@ -355,14 +569,31 @@ class _ArticleScreenState extends State<ArticleScreen> {
             icon: const Icon(Icons.open_in_browser),
           ),
       ],
-      bottom: _loading
+      bottom: _loading || _fetching
           ? const PreferredSize(
               preferredSize: Size.fromHeight(2),
               child: LinearProgressIndicator(minHeight: 2),
             )
           : null,
     ),
-    body: WebViewWidget(controller: _controller),
+    body: Column(
+      children: [
+        if (_loadError != null)
+          Material(
+            color: Theme.of(context).colorScheme.errorContainer,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(child: Text(_loadError!)),
+                  TextButton(onPressed: _loadArticle, child: const Text('重试')),
+                ],
+              ),
+            ),
+          ),
+        Expanded(child: WebViewWidget(controller: _controller)),
+      ],
+    ),
   );
 }
 
@@ -372,15 +603,32 @@ class _NewsImageScreen extends StatelessWidget {
   final String url;
 
   Future<void> _save(BuildContext context) async {
+    final client = LoggingHttpClient(http.Client());
     try {
-      final response = await http.get(Uri.parse(url));
-      if (response.statusCode != 200) {
-        throw StateError('HTTP ${response.statusCode}');
-      }
-      final result = await FilePicker.saveFile(
-        dialogTitle: '保存新闻图片',
-        fileName: 'cithub-news-${DateTime.now().millisecondsSinceEpoch}.jpg',
-        bytes: response.bodyBytes,
+      final result = await RuntimeLog.trace(
+        'news-image',
+        'save',
+        {'url': url},
+        () async {
+          final response = await client
+              .get(Uri.parse(url))
+              .timeout(const Duration(seconds: 30));
+          if (response.statusCode != 200) {
+            throw StateError('HTTP ${response.statusCode}');
+          }
+          final result = await FilePicker.saveFile(
+            dialogTitle: '保存新闻图片',
+            fileName:
+                'cithub-news-${DateTime.now().millisecondsSinceEpoch}.jpg',
+            bytes: response.bodyBytes,
+          );
+          RuntimeLog.event(
+            'news-image',
+            result == null ? 'save-cancelled' : 'saved',
+            {'url': url, 'path': result},
+          );
+          return result;
+        },
       );
       if (context.mounted && result != null) {
         ScaffoldMessenger.of(context)
@@ -391,6 +639,8 @@ class _NewsImageScreen extends StatelessWidget {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('图片保存失败：$error')));
       }
+    } finally {
+      client.close();
     }
   }
 

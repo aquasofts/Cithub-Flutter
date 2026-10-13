@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:cithub_flutter/core/logging/runtime_log.dart';
+
 import 'package:cithub_flutter/core/native/cithub_api.g.dart';
 import 'package:cithub_flutter/core/platform/cithub_platform.dart';
 import 'package:cithub_flutter/core/platform/demo_cithub_platform.dart';
@@ -219,7 +221,12 @@ void main() {
           .onPressed,
       isNull,
     );
+    await tester.runAsync(RuntimeLog.flush);
+    await tester.pump();
     platform.export.completeError(StateError('存储空间不足'));
+    await tester.runAsync(() async {
+      await Future<void>.delayed(Duration.zero);
+    });
     await tester.pumpAndSettle();
     expect(find.textContaining('存储空间不足'), findsOneWidget);
     expect(
@@ -311,6 +318,9 @@ class _EvaluationPlatform extends DemoCithubPlatform {
 }
 
 class _ExportPlatform extends DemoCithubPlatform {
+  _ExportPlatform() {
+    export.future.ignore();
+  }
   final export = Completer<String>();
   @override
   Future<String> exportRuntimeLog() => export.future;

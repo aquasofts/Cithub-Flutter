@@ -1,3 +1,5 @@
+import '../../core/logging/runtime_log.dart';
+
 import 'dart:convert';
 import 'dart:async';
 
@@ -22,10 +24,10 @@ int requestedLimit(String prompt, String source) {
       }[source] ??
       '评论|回复|讨论';
   final specific = RegExp(
-    '(?:$label)[^，。；\\n]{0,16}?(\\d+|五十|四十|三十|二十|十五|十|两|五)\\s*(?:条|篇|个|帖)',
+    '(?:$label)[^，。；\\n]{0,16}?(\\d+|五十|四十|三十|二十|十五|十|九|八|七|六|五|四|三|二|两|一)\\s*(?:条|篇|个|帖)',
   ).firstMatch(prompt);
   final general = RegExp(
-    r'(?:最近|最新|前|近|读取|看|获取)\s*(\d+|五十|四十|三十|二十|十五|十|两|五)\s*(?:条|篇|个|帖)',
+    r'(?:最近|最新|前|近|读取|读|看|获取|整理|总结|只要|仅要)\s*(\d+|五十|四十|三十|二十|十五|十|九|八|七|六|五|四|三|二|两|一)\s*(?:条|篇|个|帖)',
   ).firstMatch(prompt);
   final raw = specific?[1] ?? general?[1];
   if (raw == null &&
@@ -42,8 +44,16 @@ int requestedLimit(String prompt, String source) {
         '二十': 20,
         '十五': 15,
         '十': 10,
-        '两': 2,
+        '九': 9,
+        '八': 8,
+        '七': 7,
+        '六': 6,
         '五': 5,
+        '四': 4,
+        '三': 3,
+        '二': 2,
+        '两': 2,
+        '一': 1,
       }[raw] ??
       10;
   return value.clamp(1, 50);
@@ -61,6 +71,16 @@ String tiebaText(List<dynamic> content) => content
     )
     .join('\n');
 
+List<String> tiebaImageUrls(List<dynamic> content) => content
+    .where((item) => item.kind == 'image')
+    .map(
+      (item) => (item.originalUrl as String).isNotEmpty
+          ? item.originalUrl as String
+          : item.url as String,
+    )
+    .where((url) => url.isNotEmpty)
+    .toList();
+
 class CampusContentReader {
   CampusContentReader({
     required this.platform,
@@ -69,13 +89,17 @@ class CampusContentReader {
     required this.cancellation,
     this.progress,
     NewsRepository? news,
-  }) : news = news ?? NewsRepository();
+    http.Client Function()? clientFactory,
+  }) : news = news ?? NewsRepository(),
+       _clientFactory = clientFactory ?? http.Client.new;
+  final http.Client Function() _clientFactory;
   final CithubPlatform platform;
   final String prompt, forum;
   final AiCancellation cancellation;
   final void Function(String)? progress;
   final NewsRepository news;
   final records = <String, Map<String, dynamic>>{};
+  final _allowedImages = <String>{};
   final _bodies = <String, String>{};
   final _admitted = <String, Set<String>>{};
   final _commentRecords = <String, List<Map<String, dynamic>>>{};
@@ -102,20 +126,51 @@ class CampusContentReader {
     };
   }
 
-  Future<Map<String, dynamic>> latest(String source, int count) async {
+  Future<Map<String, dynamic>> latest(String source, int count) {
+    final readId = 'read-${DateTime.now().microsecondsSinceEpoch}';
+    return RuntimeLog.trace('campus-content', 'latest', {
+      'readId': readId,
+      'source': source,
+      'modelCount': count,
+      'prompt': prompt,
+    }, () => _latest(source, count, readId));
+  }
+
+  Future<Map<String, dynamic>> _latest(
+    String source,
+    int count,
+    String readId,
+  ) async {
     cancellation.check();
     if (!['tieba', 'wechat', 'campus', 'official'].contains(source)) {
       throw const FormatException('数据来源无效');
     }
     final cap = requestedLimit(prompt, source);
-    final requested = count.clamp(1, cap);
+    // The user's quantity (or the default ten) controls reads. Model tool
+    // arguments cannot silently shrink the requested campus summary to one.
+    final requested = cap;
+    RuntimeLog.event('campus-content', 'quantity-resolved', {
+      'readId': readId,
+      'source': source,
+      'prompt': prompt,
+      'modelCount': count,
+      'requested': requested,
+      'policy': 'user-quantity-or-default-ten',
+    });
     final ids = _admitted.putIfAbsent(source, () => {});
     final selected = records.values
         .where((r) => r['sourceType'] == source)
         .take(requested)
         .toList();
     if (selected.length >= requested) {
-      return {'items': selected, 'limit': cap, 'actual': selected.length};
+      return {
+        'source': source,
+        'items': selected,
+        'limit': cap,
+        'requested': requested,
+        'actual': selected.length,
+        'partial': false,
+      };
     }
     var partial = false;
     String? failure;
@@ -157,6 +212,10 @@ class CampusContentReader {
             final text = body == null
                 ? thread.excerpt
                 : tiebaText(body.content);
+            final images = body == null
+                ? <String>[]
+                : tiebaImageUrls(body.content);
+            _allowedImages.addAll(images);
             final record = <String, dynamic>{
               'sourceType': source,
               'id': thread.id,
@@ -168,6 +227,7 @@ class CampusContentReader {
               'url': 'https://tieba.baidu.com/p/${thread.id}',
               'forumId': thread.forumId,
               'forumName': thread.forumName,
+              'images': images,
             };
             _bodies['tieba:${thread.id}'] = text;
             record.addAll(bodyBlock('tieba', thread.id, 0));
@@ -190,9 +250,19 @@ class CampusContentReader {
           cancellation.check();
           try {
             articles = await _request(() => news.refreshSection(section));
+            if (news.failures.isNotEmpty) {
+              partial = true;
+              failure = '部分新闻源未能加载，当前仅包含成功读取的内容';
+            }
           } on AiCancelled {
             rethrow;
-          } catch (_) {
+          } catch (error, stack) {
+            RuntimeLog.event('campus-content', 'refresh-failed', {
+              'readId': readId,
+              'source': source,
+              'error': '$error',
+              'stack': '$stack',
+            });
             partial = true;
             failure = '刷新失败，使用已有缓存，可能不是最新内容';
           }
@@ -252,29 +322,44 @@ class CampusContentReader {
       }
     } on AiCancelled {
       rethrow;
-    } catch (_) {
+    } catch (error, stack) {
+      RuntimeLog.event('campus-content', 'read-failed', {
+        'readId': readId,
+        'source': source,
+        'error': '$error',
+        'stack': '$stack',
+      });
       partial = true;
       failure = '部分内容未能获取，可能需要登录、处理风控或稍后重试';
     }
     return {
+      'source': source,
+      'readId': readId,
+      'requested': requested,
       'items': selected.take(requested).toList(),
       'limit': cap,
       'actual': selected.take(requested).length,
       'partial': partial,
-      'message': ?failure,
+      'message':
+          failure ??
+          (selected.length < requested
+              ? '本次来源仅返回 ${selected.length}/$requested 条，不能据此声称已覆盖全部校园资讯'
+              : null),
     };
   }
 
   Future<String> _articleText(Uri uri) async {
     if (uri.scheme != 'https') throw StateError('文章链接须为 HTTPS');
-    final client = http.Client();
+    final client = LoggingHttpClient(_clientFactory(), streaming: true);
     cancellation.onCancel(client.close);
     try {
       for (var redirects = 0; redirects < 3; redirects++) {
         cancellation.check();
-        final response = await client
-            .send(http.Request('GET', uri)..followRedirects = false)
-            .timeout(const Duration(seconds: 15));
+        final response = await cancellation.wait(
+          client
+              .send(http.Request('GET', uri)..followRedirects = false)
+              .timeout(const Duration(seconds: 15)),
+        );
         if (response.statusCode >= 300 && response.statusCode < 400) {
           await response.stream.drain<void>();
           uri = uri.resolve(response.headers['location'] ?? '');
@@ -283,8 +368,8 @@ class CampusContentReader {
         }
         if (response.statusCode != 200) throw StateError('文章读取失败');
         final bytes = <int>[];
-        await for (final chunk in response.stream.timeout(
-          const Duration(seconds: 15),
+        await for (final chunk in cancellation.bind(
+          response.stream.timeout(const Duration(seconds: 15)),
         )) {
           cancellation.check();
           bytes.addAll(chunk);
@@ -296,7 +381,11 @@ class CampusContentReader {
         )) {
           e.remove();
         }
-        return (document.querySelector('article') ?? document.body)?.text
+        return (document.querySelector(
+                      '#vsb_content, .v_news_content, article, #js_content',
+                    ) ??
+                    document.body)
+                ?.text
                 .trim() ??
             '';
       }
@@ -338,7 +427,9 @@ class CampusContentReader {
               'author': floor.authorNickname,
               'time': floor.time,
               'content': tiebaText(floor.content),
+              'images': tiebaImageUrls(floor.content),
             });
+            _allowedImages.addAll(tiebaImageUrls(floor.content));
           }
           final replies = [...floor.replies];
           if (floor.replyCount > replies.length && output.length < requested) {
@@ -371,7 +462,9 @@ class CampusContentReader {
                 'author': reply.authorNickname,
                 'time': reply.time,
                 'content': tiebaText(reply.content),
+                'images': tiebaImageUrls(reply.content),
               });
+              _allowedImages.addAll(tiebaImageUrls(reply.content));
             }
           }
         }
@@ -394,4 +487,49 @@ class CampusContentReader {
       };
     }
   }
+
+  Future<Map<String, dynamic>> image(String url) => RuntimeLog.trace(
+    'ai-content',
+    'read-tieba-image',
+    {'url': url},
+    () async {
+      cancellation.check();
+      if (!_allowedImages.contains(url)) throw StateError('请先获取包含该图片的帖子或评论');
+      final uri = Uri.tryParse(url);
+      if (uri == null || uri.scheme != 'https') throw StateError('图片地址无效');
+      final client = LoggingHttpClient(_clientFactory(), streaming: true);
+      cancellation.onCancel(client.close);
+      try {
+        final response = await cancellation.wait(
+          client
+              .send(http.Request('GET', uri))
+              .timeout(const Duration(seconds: 15)),
+        );
+        if (response.statusCode != 200) {
+          throw StateError('图片 HTTP ${response.statusCode}');
+        }
+        final contentType =
+            response.headers['content-type']?.split(';').first ?? '';
+        if (!contentType.startsWith('image/')) throw StateError('返回内容不是图片');
+        if ((response.contentLength ?? 0) > 20 * 1024 * 1024) {
+          throw StateError('图片超过20 MB');
+        }
+        final bytes = <int>[];
+        await for (final chunk in cancellation.bind(
+          response.stream.timeout(const Duration(seconds: 15)),
+        )) {
+          cancellation.check();
+          bytes.addAll(chunk);
+          if (bytes.length > 20 * 1024 * 1024) throw StateError('图片超过20 MB');
+        }
+        cancellation.check();
+        return {
+          'url': url,
+          'image': 'data:$contentType;base64,${base64Encode(bytes)}',
+        };
+      } finally {
+        client.close();
+      }
+    },
+  );
 }

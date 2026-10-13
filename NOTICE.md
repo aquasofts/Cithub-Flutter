@@ -31,3 +31,11 @@ Flutter and Dart are distributed under their respective BSD-style licenses. Dart
 The AI interface uses Flyer Chat (`flutter_chat_ui`, `flutter_chat_core`, and `flyer_chat_text_message`), licensed under Apache-2.0: https://github.com/flyerhq/flutter_chat_ui. Its upstream license notices remain distributed with Flutter dependencies. Chatbox Community Edition (GPL-3.0, https://github.com/chatboxai/chatbox) informs the conversation/model-selection interaction; no Chatbox application source is embedded.
 
 PDF text extraction, scanned-page rendering, and preview use pdfrx (MIT), https://github.com/espresso3389/pdfrx. Office attachments use Dart archive (MIT) and XML parsing. Local schedule versions and conversations use sqflite (BSD-2-Clause). API transport implements the OpenAI-compatible Chat Completions wire format; no OpenAI key, hosted account, or service is bundled.
+
+## RikkaHub chat interface
+
+Chat message layout, thinking preview/collapse state machine, and animations are adapted from RikkaHub (AGPL-3.0), revision `0966502c4d65c1ee4b2a3e49a19703bb1978016c`: https://github.com/rikkahub/rikkahub. The pinned reference files, source record, and unmodified upstream license are in `third_party/RikkaHub/`. The Flutter adaptations retain AGPL-3.0-only attribution and source-availability requirements. Original Cithub source retains its GPL-3.0 notices.
+
+## WakeUp timetable
+
+The section-time model, start-section/span layout and manual-edit interaction reference WakeUp's Apache-2.0 source preserved in xianfei/WakeupSchedule_BUPT, commit 88d5b2ff93b946b40e8ade6851d4440188443a7f (Copyright 2019 YZune; BUPT adaptation by xianfei): https://github.com/xianfei/WakeupSchedule_BUPT. The pinned source record and unmodified license are in third_party/WakeUp/. Flutter adds actual-time boundary interpolation, compressed breaks and local course overrides; no upstream Kotlin application is embedded.

@@ -1,9 +1,13 @@
+import '../../core/logging/runtime_log.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/platform/cithub_platform.dart';
+import '../../core/widgets/chinese_text_selection.dart';
 import '../../core/storage/local_database.dart' show localId;
 import 'ai_client.dart';
+import 'ai_key_controller.dart';
 import 'ai_credentials.dart';
 import 'ai_settings.dart';
 
@@ -14,14 +18,12 @@ class AiSettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _AiSettingsScreenState extends ConsumerState<AiSettingsScreen> {
-  final _url = TextEditingController();
-  final _key = TextEditingController();
+  String _legacyUrl = 'https://api.openai.com/v1';
   final _timeout = TextEditingController(text: '300');
   AiCredentials _credentials = AiCredentials();
   List<AiModel> _models = [];
   String _default = '';
   bool _loaded = false;
-  bool _hasKey = false;
   bool _busy = false;
   @override
   void initState() {
@@ -37,18 +39,17 @@ class _AiSettingsScreenState extends ConsumerState<AiSettingsScreen> {
       );
       if (!mounted) return;
       setState(() {
-        _url.text = settings.baseUrl;
+        _legacyUrl = settings.baseUrl;
         _models = [...settings.models];
         _default = settings.model?.selectionId ?? '';
         _credentials = credentials;
-        _hasKey = credentials.legacy.isNotEmpty;
         _timeout.text = '${settings.timeoutSeconds}';
         _loaded = true;
       });
     } catch (_) {
       if (mounted) {
         setState(() {
-          _url.text = 'https://api.openai.com/v1';
+          _legacyUrl = 'https://api.openai.com/v1';
           _loaded = true;
         });
         _message('密钥读取失败，请重新填写后保存');
@@ -58,15 +59,15 @@ class _AiSettingsScreenState extends ConsumerState<AiSettingsScreen> {
 
   @override
   void dispose() {
-    _url.dispose();
-    _key.dispose();
     _timeout.dispose();
     super.dispose();
   }
 
   void _message(String text) {
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+      ScaffoldMessenger.of(context)
+        ..removeCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(text)));
     }
   }
 
@@ -75,9 +76,8 @@ class _AiSettingsScreenState extends ConsumerState<AiSettingsScreen> {
       context: context,
       builder: (_) => _AiModelDialog(
         model: old,
-        models: _models,
-        apiKey: old == null ? '' : _credentials.models[old.selectionId] ?? '',
-        baseUrl: _url.text.trim(),
+        apiKey: old == null ? '' : _credentials.keyFor(old.selectionId),
+        baseUrl: _legacyUrl,
       ),
     );
     if (result == null || !mounted) return;
@@ -103,20 +103,14 @@ class _AiSettingsScreenState extends ConsumerState<AiSettingsScreen> {
   Future<bool> _save() async {
     try {
       final settings = AiSettings(
-        baseUrl: _url.text.trim(),
+        baseUrl: _legacyUrl,
         models: _models,
         defaultModel: _default,
         timeoutSeconds:
             int.tryParse(_timeout.text) ??
             (throw const FormatException('请输入有效的超时秒数')),
       );
-      settings.endpoint;
       if (_models.isEmpty) throw const FormatException('请至少添加一个模型');
-      if (_key.text.trim().isNotEmpty) {
-        _credentials.legacy = _key.text.trim();
-        _hasKey = true;
-        _key.clear();
-      }
       if (_models.any((m) => _credentials.keyFor(m.selectionId).isEmpty)) {
         throw const FormatException('请为每个模型填写 API Key');
       }
@@ -146,7 +140,7 @@ class _AiSettingsScreenState extends ConsumerState<AiSettingsScreen> {
       final credentials = await AiCredentials.read(
         ref.read(cithubPlatformProvider),
       );
-      client = AiClient();
+      client = ref.read(aiClientFactoryProvider)();
       await for (final _ in client.complete(
         settings: settings,
         key: credentials.keyFor(settings.model!.selectionId),
@@ -156,9 +150,9 @@ class _AiSettingsScreenState extends ConsumerState<AiSettingsScreen> {
         ],
         cancellation: AiCancellation(),
       )) {}
-      _message('连接成功');
-    } catch (_) {
-      _message('连接失败，请检查地址、密钥和模型配置');
+      _message('连接成功（模型 ID：${settings.model!.id}）');
+    } catch (e) {
+      _message(aiErrorMessage(e));
     } finally {
       client?.close();
       if (mounted) setState(() => _busy = false);
@@ -174,43 +168,13 @@ class _AiSettingsScreenState extends ConsumerState<AiSettingsScreen> {
             padding: const EdgeInsets.all(16),
             children: [
               TextField(
-                controller: _url,
-                keyboardType: TextInputType.url,
-                decoration: const InputDecoration(
-                  labelText: 'Base URL',
-                  helperText: '旧配置的默认地址；每个模型可设置独立地址和密钥',
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _key,
-                obscureText: true,
-                autocorrect: false,
-                enableSuggestions: false,
-                decoration: InputDecoration(
-                  labelText: 'API Key',
-                  hintText: _hasKey ? '已加密保存，留空保持原密钥' : '填写服务提供的密钥',
-                ),
-              ),
-              if (_hasKey)
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () async {
-                      _credentials.legacy = '';
-                      await _credentials.save(ref.read(cithubPlatformProvider));
-                      if (mounted) setState(() => _hasKey = false);
-                    },
-                    child: const Text('删除已保存密钥'),
-                  ),
-                ),
-              const SizedBox(height: 16),
-              TextField(
+                contextMenuBuilder: chineseEditableTextMenu,
                 controller: _timeout,
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(
                   labelText: '请求超时（秒）',
                   helperText: '默认 300 秒，可设为 60–1800 秒；流输出按无数据等待时间计算',
+                  helperMaxLines: 3,
                 ),
               ),
               const SizedBox(height: 20),
@@ -220,7 +184,7 @@ class _AiSettingsScreenState extends ConsumerState<AiSettingsScreen> {
                   child: ListTile(
                     title: Text(m.name),
                     subtitle: Text(
-                      '${m.id} · ${m.baseUrl.isEmpty ? _url.text : m.baseUrl}\n${m.images ? '图片 · ' : ''}${m.tools ? '工具调用' : '仅聊天'}',
+                      '${m.id} · ${m.baseUrl.isEmpty ? _legacyUrl : m.baseUrl}\n${m.responsesApi ? 'Responses API' : 'Chat Completions'} · ${m.images ? '图片 · ' : ''}${m.tools ? '工具调用' : '仅聊天'}',
                     ),
                     leading: IconButton(
                       tooltip: '设为默认模型',
@@ -272,13 +236,11 @@ class _AiSettingsScreenState extends ConsumerState<AiSettingsScreen> {
 class _AiModelDialog extends StatefulWidget {
   const _AiModelDialog({
     required this.model,
-    required this.models,
     required this.apiKey,
     required this.baseUrl,
   });
 
   final AiModel? model;
-  final List<AiModel> models;
   final String apiKey, baseUrl;
 
   @override
@@ -288,9 +250,14 @@ class _AiModelDialog extends StatefulWidget {
 class _AiModelDialogState extends State<_AiModelDialog> {
   late final TextEditingController _id;
   late final TextEditingController _name;
-  late final TextEditingController _url, _key;
+  late final TextEditingController _url;
+  late final AiKeyController _key;
   late bool _images;
   late bool _tools;
+  late bool _responsesApi;
+  late bool _nativeSearch, _reasoning;
+  late Set<String> _reasoningEfforts;
+  String? _error;
 
   @override
   void initState() {
@@ -302,9 +269,14 @@ class _AiModelDialogState extends State<_AiModelDialog> {
           ? widget.model!.baseUrl
           : widget.baseUrl,
     );
-    _key = TextEditingController(text: widget.apiKey);
+    _key = AiKeyController(text: widget.apiKey);
     _images = widget.model?.images ?? false;
     _tools = widget.model?.tools ?? true;
+    _responsesApi = widget.model?.responsesApi ?? false;
+    _nativeSearch = widget.model?.nativeSearch ?? false;
+    _reasoning = widget.model?.reasoning ?? false;
+    _reasoningEfforts =
+        (widget.model?.reasoningEfforts ?? ['low', 'medium', 'high']).toSet();
   }
 
   @override
@@ -319,7 +291,16 @@ class _AiModelDialogState extends State<_AiModelDialog> {
   void _save() {
     final id = _id.text.trim();
     final name = _name.text.trim();
-    if (id.isEmpty || name.isEmpty) {
+    try {
+      if (id.isEmpty || name.isEmpty) {
+        throw const FormatException('请填写模型 ID 和显示名称');
+      }
+      AiSettings(baseUrl: _url.text.trim()).endpoint;
+      if (_key.text.trim().isEmpty) {
+        throw const FormatException('请填写此模型的 API Key');
+      }
+    } on FormatException catch (e) {
+      setState(() => _error = e.message);
       return;
     }
     Navigator.pop(context, (
@@ -330,6 +311,10 @@ class _AiModelDialogState extends State<_AiModelDialog> {
         baseUrl: _url.text.trim(),
         images: _images,
         tools: _tools,
+        responsesApi: _responsesApi,
+        nativeSearch: _nativeSearch,
+        reasoning: _reasoning,
+        reasoningEfforts: _reasoningEfforts.toList(),
       ),
       key: _key.text.trim(),
     ));
@@ -338,48 +323,158 @@ class _AiModelDialogState extends State<_AiModelDialog> {
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: Text(widget.model == null ? '添加模型' : '编辑模型'),
-    content: SingleChildScrollView(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _id,
-            decoration: const InputDecoration(labelText: '模型 ID'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _name,
-            decoration: const InputDecoration(labelText: '显示名称'),
-          ),
-          TextField(
-            controller: _url,
-            keyboardType: TextInputType.url,
-            decoration: const InputDecoration(labelText: '模型 API 地址'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _key,
-            obscureText: true,
-            autocorrect: false,
-            enableSuggestions: false,
-            decoration: const InputDecoration(
-              labelText: '模型 API Key',
-              helperText: '独立加密保存；留空使用旧配置默认密钥',
+    content: SizedBox(
+      width: 420,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+            TextField(
+              contextMenuBuilder: chineseEditableTextMenu,
+              controller: _id,
+              decoration: const InputDecoration(
+                labelText: '模型 ID',
+                hintText: 'gpt-6-sol',
+                helperText: '实际发送给服务的 model，需与服务商提供的 ID 完全一致',
+                helperMaxLines: 3,
+              ),
             ),
-          ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('支持图片'),
-            value: _images,
-            onChanged: (value) => setState(() => _images = value),
-          ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('支持工具调用'),
-            value: _tools,
-            onChanged: (value) => setState(() => _tools = value),
-          ),
-        ],
+            const SizedBox(height: 20),
+            TextField(
+              contextMenuBuilder: chineseEditableTextMenu,
+              controller: _name,
+              decoration: const InputDecoration(
+                labelText: '显示名称',
+                helperText: '仅在本机显示，不作为请求的模型 ID',
+                helperMaxLines: 2,
+              ),
+            ),
+            const SizedBox(height: 20),
+            TextField(
+              contextMenuBuilder: chineseEditableTextMenu,
+              controller: _url,
+              keyboardType: TextInputType.url,
+              decoration: const InputDecoration(
+                labelText: '模型 API 地址',
+                helperText: '例如 https://api.openai.com/v1，也可填写完整接口地址',
+                helperMaxLines: 3,
+              ),
+            ),
+            const SizedBox(height: 20),
+            TextField(
+              contextMenuBuilder: chineseEditableTextMenu,
+              controller: _key,
+              keyboardType: TextInputType.text,
+              obscureText: false,
+              autocorrect: false,
+              enableSuggestions: true,
+              enableIMEPersonalizedLearning: false,
+              smartDashesType: SmartDashesType.disabled,
+              smartQuotesType: SmartQuotesType.disabled,
+              decoration: InputDecoration(
+                labelText: '模型 API Key',
+                helperText: '仅用于此模型，密钥加密保存在本机',
+                helperMaxLines: 3,
+                suffixIcon: IconButton(
+                  tooltip: _key.revealed ? '隐藏 API Key' : '显示 API Key',
+                  icon: Icon(
+                    _key.revealed
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                  ),
+                  onPressed: () => setState(_key.toggleVisibility),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('支持 Responses API'),
+              subtitle: const Text('开启后使用 /responses；关闭使用 Chat Completions'),
+              value: _responsesApi,
+              onChanged: (value) => setState(() => _responsesApi = value),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('支持模型自带搜索'),
+              subtitle: const Text('由当前模型服务执行联网搜索'),
+              value: _nativeSearch,
+              onChanged: (value) {
+                RuntimeLog.event('ai-model', 'native-search-support-changed', {
+                  'modelId': _id.text,
+                  'before': _nativeSearch,
+                  'after': value,
+                });
+                setState(() => _nativeSearch = value);
+              },
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('支持思考程度'),
+              subtitle: const Text('选择当前模型支持的思考档位'),
+              value: _reasoning,
+              onChanged: (value) {
+                RuntimeLog.event('ai-model', 'reasoning-support-changed', {
+                  'modelId': _id.text,
+                  'before': _reasoning,
+                  'after': value,
+                });
+                setState(() => _reasoning = value);
+              },
+            ),
+            if (_reasoning)
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final level in aiReasoningLabels.entries.where(
+                    (e) => e.key != 'default',
+                  ))
+                    FilterChip(
+                      key: ValueKey('effort-support-${level.key}'),
+                      label: Text(level.value),
+                      selected: _reasoningEfforts.contains(level.key),
+                      onSelected: (selected) {
+                        final before = _reasoningEfforts.toList();
+                        setState(
+                          () => selected
+                              ? _reasoningEfforts.add(level.key)
+                              : _reasoningEfforts.remove(level.key),
+                        );
+                        RuntimeLog.event(
+                          'ai-model',
+                          'reasoning-levels-changed',
+                          {
+                            'modelId': _id.text,
+                            'before': before,
+                            'after': _reasoningEfforts.toList(),
+                          },
+                        );
+                      },
+                    ),
+                ],
+              ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('支持图片'),
+              value: _images,
+              onChanged: (value) => setState(() => _images = value),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('支持工具调用'),
+              value: _tools,
+              onChanged: (value) => setState(() => _tools = value),
+            ),
+          ],
+        ),
       ),
     ),
     actions: [

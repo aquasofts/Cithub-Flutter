@@ -1,7 +1,39 @@
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../core/logging/logged_preferences.dart';
+
+const aiReasoningLabels = {
+  'default': '默认',
+  'none': '关闭',
+  'minimal': '极低',
+  'low': '低',
+  'medium': '中',
+  'high': '高',
+  'xhigh': '极高',
+  'max': '最高',
+};
+
+class AiGenerationOptions {
+  const AiGenerationOptions({
+    this.webSearch = false,
+    this.reasoningEffort = 'default',
+  });
+  final bool webSearch;
+  final String reasoningEffort;
+  Map<String, dynamic> toJson() => {
+    'webSearch': webSearch,
+    'reasoningEffort': reasoningEffort,
+  };
+  factory AiGenerationOptions.fromJson(Map<String, dynamic> data) =>
+      AiGenerationOptions(
+        webSearch: data['webSearch'] == true,
+        reasoningEffort: aiReasoningLabels.containsKey(data['reasoningEffort'])
+            ? data['reasoningEffort'] as String
+            : 'default',
+      );
+}
 
 class AiModel {
   const AiModel({
@@ -11,6 +43,10 @@ class AiModel {
     this.configId = '',
     this.images = false,
     this.tools = true,
+    this.responsesApi = false,
+    this.nativeSearch = false,
+    this.reasoning = false,
+    this.reasoningEfforts = const ['low', 'medium', 'high'],
   });
   final String id;
   final String name;
@@ -19,6 +55,9 @@ class AiModel {
   String get selectionId => configId.isEmpty ? id : configId;
   final bool images;
   final bool tools;
+  final bool responsesApi;
+  final bool nativeSearch, reasoning;
+  final List<String> reasoningEfforts;
   Map<String, dynamic> toJson() => {
     'id': id,
     'name': name,
@@ -26,6 +65,10 @@ class AiModel {
     'configId': selectionId,
     'images': images,
     'tools': tools,
+    'responsesApi': responsesApi,
+    'nativeSearch': nativeSearch,
+    'reasoning': reasoning,
+    'reasoningEfforts': reasoningEfforts,
   };
   factory AiModel.fromJson(Map<String, dynamic> v) => AiModel(
     id: v['id'] as String,
@@ -34,6 +77,14 @@ class AiModel {
     configId: v['configId'] as String? ?? '',
     images: v['images'] == true,
     tools: v['tools'] != false,
+    responsesApi: v['responsesApi'] == true,
+    nativeSearch: v['nativeSearch'] == true,
+    reasoning: v['reasoning'] == true,
+    reasoningEfforts:
+        (v['reasoningEfforts'] as List? ?? ['low', 'medium', 'high'])
+            .whereType<String>()
+            .where((e) => e != 'default' && aiReasoningLabels.containsKey(e))
+            .toList(),
   );
 }
 
@@ -49,9 +100,10 @@ class AiSettings {
   final String defaultModel;
   final int timeoutSeconds;
   Duration get timeout => Duration(seconds: timeoutSeconds);
-  Uri endpointFor(AiModel model) =>
-      AiSettings(baseUrl: model.baseUrl.isEmpty ? baseUrl : model.baseUrl)
-          .endpoint;
+  Uri endpointFor(AiModel model) => _endpoint(
+    model.baseUrl.isEmpty ? baseUrl : model.baseUrl,
+    responsesApi: model.responsesApi,
+  );
   AiModel? get model =>
       models.where((m) => m.selectionId == defaultModel).firstOrNull ??
       models.firstOrNull;
@@ -72,8 +124,9 @@ class AiSettings {
       1800,
     ),
   );
-  Uri get endpoint {
-    final uri = Uri.tryParse(baseUrl.trim());
+  Uri get endpoint => _endpoint(baseUrl);
+  static Uri _endpoint(String address, {bool responsesApi = false}) {
+    final uri = Uri.tryParse(address.trim());
     if (uri == null ||
         uri.scheme != 'https' ||
         uri.host.isEmpty ||
@@ -82,16 +135,17 @@ class AiSettings {
         uri.hasFragment) {
       throw const FormatException('请填写 HTTPS API 根地址，不包含密钥、查询参数或完整接口路径');
     }
-    final path = uri.path.replaceAll(RegExp(r'/+$'), '');
-    if (path.endsWith('/chat/completions')) {
-      throw const FormatException('请填写 API 根地址，例如 https://example.com/v1');
-    }
-    return uri.replace(path: '$path/chat/completions');
+    var path = uri.path.replaceAll(RegExp(r'/+$'), '');
+    path = path.replaceFirst(RegExp(r'/(chat/completions|responses)$'), '');
+    if (path.isEmpty) path = '/v1';
+    return uri.replace(
+      path: '$path/${responsesApi ? 'responses' : 'chat/completions'}',
+    );
   }
 }
 
 final aiSettingsProvider = FutureProvider<AiSettings>((ref) async {
-  final raw = (await SharedPreferences.getInstance()).getString(
+  final raw = (await LoggedPreferences.getInstance()).getString(
     'ai.settings.v1',
   );
   if (raw == null) return const AiSettings();
@@ -102,7 +156,7 @@ final aiSettingsProvider = FutureProvider<AiSettings>((ref) async {
   }
 });
 Future<void> saveAiSettings(AiSettings settings) async {
-  settings.endpoint;
+  if (settings.models.isEmpty) settings.endpoint;
   for (final model in settings.models) {
     settings.endpointFor(model);
   }
@@ -113,7 +167,7 @@ Future<void> saveAiSettings(AiSettings settings) async {
       settings.models.length) {
     throw const FormatException('模型配置标识不能重复');
   }
-  await (await SharedPreferences.getInstance()).setString(
+  await (await LoggedPreferences.getInstance()).setString(
     'ai.settings.v1',
     jsonEncode(settings.toJson()),
   );

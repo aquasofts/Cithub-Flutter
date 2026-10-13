@@ -173,7 +173,15 @@ internal class AndroidUpdateApi(
                     connection.connectTimeout = 4_000
                     connection.readTimeout = 4_000
                     connection.instanceFollowRedirects = true
-                    connection.responseCode in 200..399
+                    logs.append("update-http", "REQUEST HEAD $raw headers=${connection.requestProperties}")
+                    try {
+                        val status = connection.responseCode
+                        logs.append("update-http", "RESPONSE HEAD $raw status=$status headers=${connection.headerFields}")
+                        status in 200..399
+                    } catch (error: Throwable) {
+                        logs.append("update-http", "FAILURE HEAD $raw ${error.stackTraceToString()}")
+                        throw error
+                    } finally { connection.disconnect() }
                 }.getOrDefault(false)
             }
         }
@@ -184,8 +192,18 @@ internal class AndroidUpdateApi(
         connection.readTimeout = 10_000
         connection.setRequestProperty("Accept", "application/vnd.github+json")
         connection.setRequestProperty("User-Agent", "Cithub-Flutter/${installedVersionName()}")
-        kotlin.check(connection.responseCode in 200..299) { "GitHub HTTP ${connection.responseCode}" }
-        return connection.inputStream.bufferedReader().use { it.readText() }
+        logs.append("update-http", "REQUEST GET $url headers=${connection.requestProperties}")
+        try {
+            val status = connection.responseCode
+            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+            val bytes = stream?.use { it.readBytes() } ?: byteArrayOf()
+            logs.append("update-http", "RESPONSE GET $url status=$status headers=${connection.headerFields} bodyBase64=${java.util.Base64.getEncoder().encodeToString(bytes)}")
+            kotlin.check(status in 200..299) { "GitHub HTTP $status" }
+            return bytes.toString(Charsets.UTF_8)
+        } catch (error: Throwable) {
+            logs.append("update-http", "FAILURE GET $url ${error.stackTraceToString()}")
+            throw error
+        } finally { connection.disconnect() }
     }
 
     private fun monitorDownload(id: Long) {

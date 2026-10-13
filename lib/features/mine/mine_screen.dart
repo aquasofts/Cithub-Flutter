@@ -1,3 +1,6 @@
+import '../../core/logging/runtime_audit.dart';
+import '../../core/logging/runtime_log.dart';
+
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -11,6 +14,8 @@ import '../settings/settings_screen.dart';
 import '../ai/ai_screen.dart';
 import '../timetable/academic_sync.dart';
 import '../timetable/timetable_repository.dart';
+import '../timetable/timetable_time.dart';
+import '../timetable/timetable_editor_screen.dart';
 
 class MineScreen extends ConsumerStatefulWidget {
   const MineScreen({super.key});
@@ -22,7 +27,6 @@ class _MineScreenState extends ConsumerState<MineScreen> {
   int? _week;
   String? _scheduleId;
   bool _today = false;
-  bool _showInactive = true;
   bool _firstUse = false;
   @override
   void initState() {
@@ -47,7 +51,7 @@ class _MineScreenState extends ConsumerState<MineScreen> {
   }
 
   void _ai() => Navigator.of(context).push(
-    MaterialPageRoute<void>(
+    LoggedMaterialPageRoute<void>(
       builder: (_) => const AiScreen(initialText: '请根据我提供的文字、图片或文件修改课表：'),
     ),
   );
@@ -89,7 +93,9 @@ class _MineScreenState extends ConsumerState<MineScreen> {
           IconButton(
             tooltip: '设置',
             onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+              LoggedMaterialPageRoute<void>(
+                builder: (_) => const SettingsScreen(),
+              ),
             ),
             icon: const Icon(Icons.settings_outlined),
           ),
@@ -101,13 +107,10 @@ class _MineScreenState extends ConsumerState<MineScreen> {
               }
               if (v == 'history' && s != null && context.mounted) {
                 await Navigator.of(context).push(
-                  MaterialPageRoute<void>(
+                  LoggedMaterialPageRoute<void>(
                     builder: (_) => ScheduleHistoryScreen(scheduleId: s.id),
                   ),
                 );
-              }
-              if (v == 'inactive') {
-                setState(() => _showInactive = !_showInactive);
               }
               if (v == 'dates' && s != null) await _dates(s);
               if (v == 'times' && s != null) await _times(s);
@@ -115,10 +118,6 @@ class _MineScreenState extends ConsumerState<MineScreen> {
             itemBuilder: (_) => [
               const PopupMenuItem(value: 'sync', child: Text('同步教务课表')),
               const PopupMenuItem(value: 'history', child: Text('历史版本')),
-              PopupMenuItem(
-                value: 'inactive',
-                child: Text(_showInactive ? '隐藏非本周课程' : '显示非本周课程'),
-              ),
               const PopupMenuItem(value: 'dates', child: Text('设置学期起始日期')),
               const PopupMenuItem(value: 'times', child: Text('设置节次时间')),
             ],
@@ -369,9 +368,9 @@ class _MineScreenState extends ConsumerState<MineScreen> {
                           const axisWidth = 42.0;
                           const headerHeight = 48.0;
                           final rowHeight = math.max(
-                            1.0,
+                            64.0,
                             (constraints.maxHeight - headerHeight - 1) /
-                                sections(s),
+                                math.min(9, sections(s)),
                           );
                           return Column(
                             children: [
@@ -455,17 +454,49 @@ class _MineScreenState extends ConsumerState<MineScreen> {
                               ),
                               const Divider(height: 1),
                               Expanded(
-                                child: Row(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    SizedBox(
-                                      width: axisWidth,
-                                      child: _timeAxis(s, rowHeight),
+                                child:
+                                    NotificationListener<
+                                      UserScrollNotification
+                                    >(
+                                      onNotification: (notification) {
+                                        RuntimeLog.event(
+                                          'schedule',
+                                          'grid-scroll',
+                                          {
+                                            'direction':
+                                                notification.direction.name,
+                                            'offset':
+                                                notification.metrics.pixels,
+                                            'week': week,
+                                            'scheduleId': s.id,
+                                          },
+                                        );
+                                        return false;
+                                      },
+                                      child: SingleChildScrollView(
+                                        key: const Key('schedule-grid-scroll'),
+                                        child: SizedBox(
+                                          height: sections(s) * rowHeight,
+                                          child: Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.stretch,
+                                            children: [
+                                              SizedBox(
+                                                width: axisWidth,
+                                                child: _timeAxis(s, rowHeight),
+                                              ),
+                                              Expanded(
+                                                child: _grid(
+                                                  s,
+                                                  week,
+                                                  rowHeight,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
                                     ),
-                                    Expanded(child: _grid(s, week, rowHeight)),
-                                  ],
-                                ),
                               ),
                             ],
                           );
@@ -479,22 +510,14 @@ class _MineScreenState extends ConsumerState<MineScreen> {
     );
   }
 
-  int sections(ScheduleSnapshot s) => math.max(
-    10,
-    s.courses.fold<int>(0, (n, c) => math.max(n, c.course.endSection)),
-  );
+  int sections(ScheduleSnapshot s) => TimetableTime(s).sectionCount;
   Widget _timeAxis(ScheduleSnapshot s, double rowHeight) => Column(
     children: List.generate(sections(s), (i) {
       final section = i + 1;
-      final custom = s.sectionTimes['$section'] as String?;
-      final period = s.data.periods
-          .where((p) => p.index == (section + 1) ~/ 2)
-          .firstOrNull;
-      final time =
-          custom ??
-          (section.isOdd && period != null
-              ? '${period.startTime}\n${period.endTime}'
-              : '');
+      final interval = TimetableTime(s).section(section);
+      final time = interval == null
+          ? ''
+          : '${clockLabel(interval.start)}\n${clockLabel(interval.end)}';
       return SizedBox(
         height: rowHeight,
         child: Padding(
@@ -520,6 +543,7 @@ class _MineScreenState extends ConsumerState<MineScreen> {
     }),
   );
   Widget _grid(ScheduleSnapshot s, int week, double height) {
+    final clock = TimetableTime(s);
     return SizedBox(
       height: sections(s) * height,
       child: Row(
@@ -540,16 +564,8 @@ class _MineScreenState extends ConsumerState<MineScreen> {
                     c.course.weekNumbers.isEmpty ||
                     c.course.weekNumbers.contains(week);
                 bool overlaps(LocalCourse a, LocalCourse b) =>
-                    a.course.startSection <= b.course.endSection &&
-                    b.course.startSection <= a.course.endSection;
-                final shown = all
-                    .where(
-                      (c) =>
-                          active(c) ||
-                          (_showInactive &&
-                              !all.any((v) => active(v) && overlaps(c, v))),
-                    )
-                    .toList();
+                    clock.overlaps(a, b);
+                final shown = all.where(active).toList();
                 final lanes = <String, int>{};
                 final occupied = <List<LocalCourse>>[];
                 for (final c in shown) {
@@ -606,16 +622,16 @@ class _MineScreenState extends ConsumerState<MineScreen> {
                                 ? .27
                                 : .87,
                           ).toColor();
+                          final bounds = clock.bounds(c);
                           return Positioned(
-                            top: (c.course.startSection - 1) * height + 2,
+                            key: ValueKey('course-${c.id}'),
+                            top: bounds.$1 * height,
                             left: lanes[c.id]! * laneWidth + 2,
                             width: laneWidth - 4,
-                            height:
-                                (c.course.endSection -
-                                        c.course.startSection +
-                                        1) *
-                                    height -
-                                4,
+                            height: math.max(
+                              12.0,
+                              (bounds.$2 - bounds.$1) * height - 4,
+                            ),
                             child: Semantics(
                               button: true,
                               label:
@@ -627,15 +643,19 @@ class _MineScreenState extends ConsumerState<MineScreen> {
                                         color,
                                       )
                                     : color,
-                                borderRadius: BorderRadius.circular(8),
+                                borderRadius: BorderRadius.circular(10),
                                 child: InkWell(
-                                  borderRadius: BorderRadius.circular(8),
-                                  onTap: () => _details([
-                                    c,
-                                    ...all.where(
-                                      (v) => v.id != c.id && overlaps(c, v),
-                                    ),
-                                  ], week),
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: () => _details(
+                                    [
+                                      c,
+                                      ...shown.where(
+                                        (v) => v.id != c.id && overlaps(c, v),
+                                      ),
+                                    ],
+                                    week,
+                                    s,
+                                  ),
                                   child: Padding(
                                     padding: const EdgeInsets.all(4),
                                     child: Column(
@@ -645,47 +665,56 @@ class _MineScreenState extends ConsumerState<MineScreen> {
                                         Expanded(
                                           child: LayoutBuilder(
                                             builder: (context, bounds) {
-                                              final label =
-                                                  '${c.course.name}\n${c.course.location}${inactive ? '\n非本周' : ''}';
-                                              var fontSize = 12.0;
-                                              final scaler =
-                                                  MediaQuery.textScalerOf(
-                                                    context,
-                                                  );
-                                              while (fontSize > 1) {
-                                                final painter =
-                                                    TextPainter(
-                                                      text: TextSpan(
-                                                        text: label,
-                                                        style: TextStyle(
-                                                          fontSize: fontSize,
-                                                          height: 1.12,
-                                                        ),
-                                                      ),
-                                                      textDirection:
-                                                          Directionality.of(
-                                                            context,
-                                                          ),
-                                                      textScaler: scaler,
-                                                    )..layout(
-                                                      maxWidth: bounds.maxWidth,
-                                                    );
-                                                final fits =
-                                                    painter.height <=
-                                                    bounds.maxHeight;
-                                                painter.dispose();
-                                                if (fits) break;
-                                                fontSize -= .25;
-                                              }
-                                              return Text(
-                                                label,
+                                              final fontSize =
+                                                  bounds.maxWidth < 30
+                                                  ? 9.5
+                                                  : 11.5;
+                                              final title = Text(
+                                                c.course.name,
+                                                maxLines: math.max(
+                                                  1,
+                                                  (bounds.maxHeight /
+                                                          (fontSize * 1.25))
+                                                      .floor(),
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
                                                 style: TextStyle(
                                                   fontSize: fontSize,
-                                                  height: 1.12,
-                                                  color: inactive
-                                                      ? scheme.onSurfaceVariant
-                                                      : scheme.onSurface,
+                                                  height: 1.25,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: scheme.onSurface,
                                                 ),
+                                              );
+                                              if (bounds.maxHeight < 48 ||
+                                                  c.course.location.isEmpty) {
+                                                return title;
+                                              }
+                                              return Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Expanded(child: title),
+                                                  Text(
+                                                    c.course.location,
+                                                    maxLines:
+                                                        bounds.maxHeight < 80
+                                                        ? 1
+                                                        : 2,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      fontSize: math.max(
+                                                        9,
+                                                        fontSize - 1,
+                                                      ),
+                                                      height: 1.2,
+                                                      color: scheme.onSurface
+                                                          .withValues(
+                                                            alpha: .75,
+                                                          ),
+                                                    ),
+                                                  ),
+                                                ],
                                               );
                                             },
                                           ),
@@ -735,60 +764,84 @@ class _MineScreenState extends ConsumerState<MineScreen> {
           child: ListTile(
             title: Text(c.name),
             subtitle: Text(
-              '${c.startSection}–${c.endSection}节 · ${c.location}',
+              '${c.startSection}–${c.endSection}节 · ${TimetableTime(s).course(items[i])?.label ?? '时间未设置'} · ${c.location}',
             ),
-            onTap: () => _details([items[i]], week),
+            onTap: () => _details([items[i]], week, s),
           ),
         );
       },
     );
   }
 
-  void _details(
+  Future<void> _details(
     List<LocalCourse> courses,
     int week,
-  ) => showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    builder: (ctx) => SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (final item in courses) ...[
-              Text(item.course.name, style: Theme.of(ctx).textTheme.titleLarge),
-              const SizedBox(height: 8),
-              Text(
-                '星期${'一二三四五六日'[item.course.dayOfWeek - 1]} · ${item.course.startSection}–${item.course.endSection}节',
+    ScheduleSnapshot schedule,
+  ) => RuntimeLog.trace(
+    'schedule',
+    'course-details',
+    {
+      'scheduleId': schedule.id,
+      'week': week,
+      'courses': courses.map((c) => c.toJson()).toList(),
+    },
+    () => showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final item in courses) ...[
+                Text(
+                  item.course.name,
+                  style: Theme.of(ctx).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '星期${'一二三四五六日'[item.course.dayOfWeek - 1]} · ${item.course.startSection}–${item.course.endSection}节',
+                ),
+                Text(
+                  '上课时间：${TimetableTime(schedule).course(item)?.label ?? '未设置'}',
+                ),
+                Text(
+                  '教室：${item.course.location.isEmpty ? '待定' : item.course.location}',
+                ),
+                Text(
+                  '教师：${item.course.teacher.isEmpty ? '待定' : item.course.teacher}',
+                ),
+                Text(
+                  '周次：${item.course.weekNumbers.isEmpty
+                      ? item.course.weeks.isEmpty
+                            ? '每周'
+                            : item.course.weeks
+                      : item.course.weekNumbers.join('、')}',
+                ),
+                if (item.course.weekNumbers.isNotEmpty &&
+                    !item.course.weekNumbers.contains(week))
+                  const Text('非本周'),
+                TextButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    editTimetableCourse(context, schedule, item);
+                  },
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('手动编辑这门课'),
+                ),
+                const Divider(height: 32),
+              ],
+              FilledButton.tonal(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _ai();
+                },
+                child: const Text('用 AI 修改课表'),
               ),
-              Text(
-                '教室：${item.course.location.isEmpty ? '待定' : item.course.location}',
-              ),
-              Text(
-                '教师：${item.course.teacher.isEmpty ? '待定' : item.course.teacher}',
-              ),
-              Text(
-                '周次：${item.course.weekNumbers.isEmpty
-                    ? item.course.weeks.isEmpty
-                          ? '每周'
-                          : item.course.weeks
-                    : item.course.weekNumbers.join('、')}',
-              ),
-              if (item.course.weekNumbers.isNotEmpty &&
-                  !item.course.weekNumbers.contains(week))
-                const Text('非本周'),
-              const Divider(height: 32),
             ],
-            FilledButton.tonal(
-              onPressed: () {
-                Navigator.pop(ctx);
-                _ai();
-              },
-              child: const Text('用 AI 修改课表'),
-            ),
-          ],
+          ),
         ),
       ),
     ),
@@ -830,61 +883,9 @@ class _MineScreenState extends ConsumerState<MineScreen> {
     }
   }
 
-  Future<void> _times(ScheduleSnapshot s) async {
-    final controller = TextEditingController(
-      text: s.sectionTimes.entries.map((e) => '${e.key} ${e.value}').join('\n'),
-    );
-    final text = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('节次时间'),
-        content: TextField(
-          controller: controller,
-          maxLines: 10,
-          decoration: const InputDecoration(
-            hintText: '每行：节次 开始-结束\n例如：1 08:10-08:55',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('保存'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (text == null || !mounted) return;
-    try {
-      final times = <String, dynamic>{};
-      for (final line in text.split('\n').where((l) => l.trim().isNotEmpty)) {
-        final match = RegExp(r'^(\d+)\s+([0-2]\d:[0-5]\d)-([0-2]\d:[0-5]\d)$')
-            .firstMatch(line.trim());
-        if (match == null ||
-            int.parse(match[1]!) < 1 ||
-            int.parse(match[1]!) > 30 ||
-            match[2]!.compareTo(match[3]!) >= 0 ||
-            int.parse(match[2]!.substring(0, 2)) > 23 ||
-            int.parse(match[3]!.substring(0, 2)) > 23) {
-          throw const FormatException();
-        }
-        times[match[1]!] = '${match[2]}\n${match[3]}';
-      }
-      await ref
-          .read(timetableRepositoryProvider)
-          .save(s.copyWith(sectionTimes: times), '设置节次时间', localId());
-      ref.read(localRevisionProvider.notifier).state++;
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('时间格式无效或课表已变化，请重试')));
-      }
-    }
-  }
+  Future<void> _times(ScheduleSnapshot s) => Navigator.of(context).push<void>(
+    LoggedMaterialPageRoute(builder: (_) => SectionTimesScreen(schedule: s)),
+  );
 }
 
 class ScheduleHistoryScreen extends ConsumerWidget {

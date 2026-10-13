@@ -1,7 +1,9 @@
+import '../../core/logging/runtime_log.dart';
 import '../../core/platform/cithub_platform.dart';
 import '../../core/native/cithub_api.g.dart';
 import '../../core/storage/local_database.dart';
 import '../timetable/timetable_repository.dart';
+import '../timetable/timetable_time.dart';
 import 'ai_attachments.dart';
 import 'ai_client.dart';
 import 'campus_content.dart';
@@ -27,10 +29,22 @@ Map<String, dynamic> _tool(
 const _string = {'type': 'string'};
 const _integer = {'type': 'integer'};
 final aiToolDefinitions = <Map<String, dynamic>>[
-  _tool('read_schedule', '读取本地课表及版本、稳定课程ID、教务原始课程和修改记录。无课表也能读取空模板。', {}, []),
+  _tool(
+    'read_schedule',
+    '申请读取本地课表，自动通过，无需用户确认。默认仅返回当前课程；可按周次和星期筛选。只有合并教务修改时才用academic_base获取教务基线及修改记录。无课表返回空模板。',
+    {
+      'scope': {
+        'type': 'string',
+        'enum': ['current', 'academic_base'],
+      },
+      'week': _integer,
+      'dayOfWeek': _integer,
+    },
+    [],
+  ),
   _tool(
     'read_academic',
-    '只读教务数据，需要用户已登录。kind 为 timetable/grades/selection/evaluations/evaluation_courses。',
+    '申请读取指定教务数据，自动通过且只返回指定kind，需要用户已登录。kind 为 timetable/grades/selection/evaluations/evaluation_courses。',
     {
       'kind': {
         'type': 'string',
@@ -49,12 +63,16 @@ final aiToolDefinitions = <Map<String, dynamic>>[
   ),
   _tool(
     'patch_schedule',
-    '仅在用户明确要求修改课表时使用。校验后直接保存并生成历史；必须先读取版本。operations 为 add/update/delete，update和delete使用稳定id；add 的 course 需 name/dayOfWeek/startSection/endSection/weekNumbers（具体周次），可选teacher/location。不要猜测不明信息。',
+    '仅在用户明确要求修改课表时使用。校验后申请用户弹窗确认，允许后才保存并生成历史；必须先读取版本。operations 为 add/update/delete，update和delete使用稳定id；add 的 course 需 name/dayOfWeek/startSection/endSection/weekNumbers（具体周次），可选teacher/location。不要猜测不明信息。',
     {
       'expectedRevision': _integer,
       'term': _string,
       'summary': _string,
-      'startDate': {'type': 'string', 'description': '可选，第1周周一，YYYY-MM-DD'},
+      'startDate': {
+        'type': 'string',
+        'description':
+            '可选，仅用户明确校正学期日期时填写，第1周周一YYYY-MM-DD；已有教学周锚点自动沿用，缺失日期也不阻止按周次保存',
+      },
       'operations': {
         'type': 'array',
         'items': {
@@ -75,6 +93,11 @@ final aiToolDefinitions = <Map<String, dynamic>>[
                 'weekNumbers': {'type': 'array', 'items': _integer},
                 'teacher': _string,
                 'location': _string,
+                'startTime': {
+                  'type': 'string',
+                  'description': '可选，实际开始时间HH:mm，用于提前/延后/错峰；需同时提供endTime',
+                },
+                'endTime': _string,
               },
               'additionalProperties': false,
             },
@@ -97,7 +120,7 @@ final aiToolDefinitions = <Map<String, dynamic>>[
   ),
   _tool(
     'latest_content',
-    '读取所需来源最新内容，客户端每来源默认10条，只有用户明确要求更多时才增加，最多50条；正文提供分块编号。',
+    '申请读取指定来源，自动通过且只返回该来源。数量以用户明确要求为准，否则每来源读取最新10条，最多50条；count不能减少默认数量。正文提供分块编号，不足或失败会返回原因。',
     {
       'source': {
         'type': 'string',
@@ -125,7 +148,42 @@ final aiToolDefinitions = <Map<String, dynamic>>[
     {'id': _string, 'block': _integer},
     ['id'],
   ),
+  _tool(
+    'read_tieba_image',
+    '读取已获取贴吧帖子或评论中的图片。必须使用返回的 images 中的原始 URL；需要视觉模型。',
+    {'url': _string},
+    ['url'],
+  ),
+  _tool(
+    'batch_read',
+    '一次申请并读取多个内容，减少往返时间。requests 最多30项，每项 name 是任一读取工具名、arguments 是其参数；按顺序返回全部结果。',
+    {
+      'requests': {
+        'type': 'array',
+        'items': {
+          'type': 'object',
+          'properties': {
+            'name': _string,
+            'arguments': {'type': 'object'},
+          },
+          'required': ['name', 'arguments'],
+          'additionalProperties': false,
+        },
+      },
+    },
+    ['requests'],
+  ),
 ];
+
+class ScheduleChangeRequest {
+  const ScheduleChangeRequest({
+    required this.term,
+    required this.summary,
+    required this.changes,
+  });
+  final String term, summary;
+  final List<String> changes;
+}
 
 class AiToolExecutor {
   AiToolExecutor({
@@ -141,7 +199,7 @@ class AiToolExecutor {
     required this.turnId,
     this.progress,
     this.alreadyMutated = false,
-    this.allowScheduleChanges = true,
+    this.requestScheduleChange,
   }) {
     campus = CampusContentReader(
       platform: platform,
@@ -162,29 +220,99 @@ class AiToolExecutor {
   final AiCancellation cancellation;
   final void Function(String)? progress;
   bool alreadyMutated;
-  final bool allowScheduleChanges;
+  final Future<bool> Function(ScheduleChangeRequest)? requestScheduleChange;
+  bool _permissionDenied = false;
   late final CampusContentReader campus;
   ScheduleSnapshot? _draft;
   TimetableDto? _academic;
   String? _academicAccount;
   final _evaluationPaths = <String>{};
-  bool get mayWrite =>
-      allowScheduleChanges &&
-      !RegExp(
-        r'(?:不要|不许|禁止|别|无需|不用|不需要|不想)[^，。；\n]{0,12}(?:修改|更新|删除|添加|新增|导入|调整|取消|移除)',
-      ).hasMatch(prompt) &&
-      RegExp(
-        r'修改|更新|删除|添加|新增|导入|调整|排课|安排.*课|取消.*课|移除|改.*课|课.*改|恢复',
-        caseSensitive: false,
-      ).hasMatch(prompt);
   Future<Map<String, dynamic>> execute(
+    String name,
+    Map<String, dynamic> args,
+    String callId,
+  ) => RuntimeLog.trace('ai-tool', name, {
+    'callId': callId,
+    'arguments': args,
+  }, () => _execute(name, args, callId));
+
+  Future<Map<String, dynamic>> _execute(
     String name,
     Map<String, dynamic> args,
     String callId,
   ) async {
     cancellation.check();
+    const readSources = {
+      'read_schedule': '本地课表',
+      'read_academic': '教务数据',
+      'latest_content': '所选校园内容',
+      'read_content_block': '正文分块',
+      'read_comments': '帖子评论',
+      'read_attachment': '附件分块',
+      'read_tieba_image': '贴吧图片',
+    };
+    if (readSources.containsKey(name)) {
+      RuntimeLog.event('ai-permission', 'read-approved', {
+        'turnId': turnId,
+        'callId': callId,
+        'name': name,
+        'arguments': args,
+        'authorization': 'automatic',
+      });
+      progress?.call('正在按需读取${readSources[name]}…');
+    }
     try {
       switch (name) {
+        case 'batch_read':
+          final requests = args['requests'] as List?;
+          if (requests == null || requests.isEmpty || requests.length > 30) {
+            throw const FormatException('批量读取需包含1到30项');
+          }
+          final results = <Map<String, dynamic>>[];
+          for (var i = 0; i < requests.length; i++) {
+            cancellation.check();
+            try {
+              final request = Map<String, dynamic>.from(requests[i] as Map);
+              final readName = request['name'] as String;
+              if (!readSources.containsKey(readName)) {
+                throw FormatException('批量读取不允许工具 $readName');
+              }
+              final arguments = Map<String, dynamic>.from(
+                request['arguments'] as Map,
+              );
+              results.add({
+                'name': readName,
+                'arguments': arguments,
+                'result': await execute(readName, arguments, '$callId:$i'),
+              });
+            } on AiCancelled {
+              rethrow;
+            } catch (error, stack) {
+              RuntimeLog.event('ai-tool', 'batch-item-failed', {
+                'callId': callId,
+                'index': i,
+                'request': requests[i],
+                'error': '$error',
+                'stack': '$stack',
+              });
+              results.add({'request': requests[i], 'error': '$error'});
+            }
+          }
+          final errors = results
+              .where(
+                (r) =>
+                    r['error'] != null ||
+                    (r['result'] is Map && r['result']['error'] != null),
+              )
+              .toList();
+          return {
+            'results': results,
+            'actual': results.length - errors.length,
+            'partial': errors.isNotEmpty,
+            if (errors.length == results.length)
+              'error':
+                  '${errors.first['error'] ?? errors.first['result']['error']}',
+          };
         case 'read_schedule':
           final s = await repository.active();
           _draft =
@@ -195,7 +323,47 @@ class AiToolExecutor {
                 revision: 0,
                 data: timetableFromJson({'selectedTerm': '', 'courses': []}),
               );
-          return _draft!.toJson();
+          final draft = _draft!;
+          final result = draft.toJson();
+          final reference = DateTime.tryParse(
+            draft.data.referenceDateIso ?? '',
+          );
+          final referenceWeek = draft.data.referenceWeek;
+          if (reference != null && referenceWeek != null && referenceWeek > 0) {
+            final monday = DateTime(
+              reference.year,
+              reference.month,
+              reference.day - reference.weekday + 1 - (referenceWeek - 1) * 7,
+            );
+            result['semesterStartDate'] = monday
+                .toIso8601String()
+                .split('T')
+                .first;
+          }
+          result['calendarMessage'] = '沿用已有教学周与日期；缺少日期仍可按周次保存课程，无需询问几月几号';
+          if (args['scope'] != 'academic_base') {
+            result.remove('official');
+            result.remove('edits');
+          }
+          final week = (args['week'] as num?)?.toInt();
+          final day = (args['dayOfWeek'] as num?)?.toInt();
+          if (week != null && (week < 1 || week > 60) ||
+              day != null && (day < 1 || day > 7)) {
+            throw const FormatException('周次或星期无效');
+          }
+          result['courses'] = draft.courses
+              .where(
+                (c) =>
+                    (week == null ||
+                        c.course.weekNumbers.isEmpty ||
+                        c.course.weekNumbers.contains(week)) &&
+                    (day == null || c.course.dayOfWeek == day),
+              )
+              .map((c) => c.toJson())
+              .toList();
+          // The metadata's DTO also contains a duplicate raw course list.
+          (result['data'] as Map).remove('courses');
+          return result;
         case 'latest_content':
           return await campus.latest(
             args['source'] as String,
@@ -222,6 +390,9 @@ class AiToolExecutor {
             supportsImages,
             cancellation,
           );
+        case 'read_tieba_image':
+          if (!supportsImages) throw StateError('请选择支持图片的模型');
+          return await campus.image(args['url'] as String);
         case 'read_academic':
           return await _readAcademic(args);
         case 'patch_schedule':
@@ -237,6 +408,8 @@ class AiToolExecutor {
           }
           final courses = [...s.courses];
           final edits = Map<String, dynamic>.from(s.edits);
+          final changes = <String>[];
+          final changedIds = <String>{};
           for (final raw in args['operations'] as List) {
             final operation = Map<String, dynamic>.from(raw as Map);
             final op = operation['op'];
@@ -245,6 +418,7 @@ class AiToolExecutor {
               if (index < 0) throw StateError('课程ID不存在，请重新读取课表并明确课程');
               final old = courses[index];
               if (op == 'delete') {
+                changes.add('删除：${_courseLabel(old.course)}');
                 courses.removeAt(index);
                 if (old.source == 'academic') {
                   edits[old.id] = {
@@ -258,15 +432,27 @@ class AiToolExecutor {
                   ...Map<String, dynamic>.from(operation['course'] as Map),
                 };
                 final updated = courseFromJson(value);
+                changes.add(
+                  '修改：${_courseLabel(old.course)}\n改为：${_courseLabel(updated)}${value['startTime'] == null ? '' : ' · ${value['startTime']}–${value['endTime']}'}',
+                );
+                changedIds.add(old.id);
                 courses[index] = LocalCourse(
                   id: old.id,
                   source: old.source,
                   course: updated,
+                  startTime: value['startTime'] as String? ?? old.startTime,
+                  endTime: value['endTime'] as String? ?? old.endTime,
                 );
                 if (old.source == 'academic') {
                   edits[old.id] = {
                     'op': 'update',
-                    'course': courseJson(updated),
+                    'course': {
+                      ...courseJson(updated),
+                      if (courses[index].startTime != null)
+                        'startTime': courses[index].startTime,
+                      if (courses[index].endTime != null)
+                        'endTime': courses[index].endTime,
+                    },
                   };
                 }
               }
@@ -278,11 +464,18 @@ class AiToolExecutor {
                   (value['weekNumbers'] as List).isEmpty) {
                 throw StateError('新增课程必须明确实际周次，不能猜测每周上课');
               }
+              changes.add(
+                '新增：${_courseLabel(courseFromJson(value))}${value['startTime'] == null ? '' : ' · ${value['startTime']}–${value['endTime']}'}',
+              );
+              final id = localId();
+              changedIds.add(id);
               courses.add(
                 LocalCourse(
-                  id: localId(),
+                  id: id,
                   source: 'ai',
                   course: courseFromJson(value),
+                  startTime: value['startTime'] as String?,
+                  endTime: value['endTime'] as String?,
                 ),
               );
             } else {
@@ -298,17 +491,30 @@ class AiToolExecutor {
             data['referenceDateIso'] = date.toIso8601String();
             data['referenceWeek'] = 1;
           }
-          cancellation.check();
-          final saved = await repository.save(
-            s.copyWith(
-              data: timetableFromJson(data),
-              courses: courses,
-              edits: edits,
+          if (changes.isEmpty) throw const FormatException('没有需要修改的课程');
+          final proposed = s.copyWith(
+            data: timetableFromJson(data),
+            courses: courses,
+            edits: edits,
+          );
+          repository.validate(proposed);
+          await _confirmChange(
+            ScheduleChangeRequest(
+              term: term,
+              summary: args['summary'] as String,
+              changes: changes,
             ),
+          );
+          final saved = await repository.save(
+            proposed,
             args['summary'] as String,
             '$turnId:$callId',
           );
-          return _saved(saved, args['summary'] as String);
+          return _saved(
+            saved,
+            args['summary'] as String,
+            changedIds: changedIds,
+          );
         case 'merge_academic_schedule':
           _authorize();
           if (_academic == null || _academicAccount == null || _draft == null) {
@@ -321,7 +527,31 @@ class AiToolExecutor {
               _draft!.data.selectedTerm != _academic!.selectedTerm) {
             throw StateError('学期不同，请用户先切换对应课表');
           }
-          cancellation.check();
+          if (args['expectedRevision'] != _draft!.revision) {
+            throw StateError('请重新读取当前课表版本');
+          }
+          final preserve = (args['preserveIds'] as List).cast<String>();
+          if (preserve.any((id) => !_draft!.edits.containsKey(id))) {
+            throw StateError('要保留的修改ID不存在');
+          }
+          await _confirmChange(
+            ScheduleChangeRequest(
+              term: _academic!.selectedTerm,
+              summary: '更新教务课表并合并修改',
+              changes: [
+                '替换为教务新课表（${_academic!.courses.length}条课程记录）；保留独立导入的课程。',
+                '保留指定修改或删除记录：${preserve.length}条。',
+                ..._academic!.courses.map((c) => '教务课程：${_courseLabel(c)}'),
+                ...preserve.map((id) {
+                  final edit = _draft!.edits[id] as Map;
+                  final course = courseFromJson(
+                    Map<String, dynamic>.from(edit['course'] as Map),
+                  );
+                  return '保留${edit['op'] == 'delete' ? '删除' : '修改'}：${_courseLabel(course)}';
+                }),
+              ],
+            ),
+          );
           final saved = await repository.importAcademic(
             _academicAccount!,
             _academic!,
@@ -336,7 +566,14 @@ class AiToolExecutor {
       }
     } on AiCancelled {
       rethrow;
-    } catch (error) {
+    } catch (error, stack) {
+      RuntimeLog.event('ai-tool', 'operation-failed', {
+        'callId': callId,
+        'name': name,
+        'arguments': args,
+        'error': '$error',
+        'stack': '$stack',
+      });
       return {
         'error': error is StateError
             ? error.message
@@ -348,26 +585,75 @@ class AiToolExecutor {
   }
 
   void _authorize() {
-    if (!mayWrite) throw StateError('当前用户请求没有授权修改课表');
+    if (_permissionDenied) throw StateError('用户已拒绝本轮课表修改，不得重复申请');
     if (alreadyMutated) throw StateError('本轮课表修改已保存，请使用结果版本回答，避免重复修改');
   }
 
-  Map<String, dynamic> _saved(ScheduleSnapshot s, String summary) {
+  Future<void> _confirmChange(ScheduleChangeRequest request) async {
+    _authorize();
+    cancellation.check();
+    progress?.call('等待课表修改授权…');
+    RuntimeLog.event('ai-permission', 'requested', {
+      'turnId': turnId,
+      'term': request.term,
+      'summary': request.summary,
+      'changes': request.changes,
+    });
+    final approved = await requestScheduleChange?.call(request) ?? false;
+    RuntimeLog.event('ai-permission', 'decided', {
+      'turnId': turnId,
+      'approved': approved,
+      'term': request.term,
+      'summary': request.summary,
+      'changes': request.changes,
+    });
+    cancellation.check();
+    if (!approved) {
+      _permissionDenied = true;
+      throw StateError('用户未允许本次修改，课表未更改。不要再次申请或声称已保存。');
+    }
+  }
+
+  String _courseLabel(TimetableCourseDto course) =>
+      '${course.name} · 周${'一二三四五六日'[course.dayOfWeek.clamp(1, 7) - 1]} 第${course.startSection}–${course.endSection}节 · 第${course.weekNumbers.join('、')}周${course.location.isEmpty ? '' : ' · ${course.location}'}';
+
+  Map<String, dynamic> _saved(
+    ScheduleSnapshot s,
+    String summary, {
+    Set<String>? changedIds,
+  }) {
     alreadyMutated = true;
     _draft = s;
     onSaved();
-    final conflicts = <String>[];
+    final conflicts = <String>{};
+    final clock = TimetableTime(s);
     for (var i = 0; i < s.courses.length; i++) {
       for (var j = i + 1; j < s.courses.length; j++) {
+        if (changedIds != null &&
+            !changedIds.contains(s.courses[i].id) &&
+            !changedIds.contains(s.courses[j].id)) {
+          continue;
+        }
         final a = s.courses[i].course;
         final b = s.courses[j].course;
         if (a.dayOfWeek == b.dayOfWeek &&
-            a.startSection <= b.endSection &&
-            b.startSection <= a.endSection &&
+            clock.overlaps(s.courses[i], s.courses[j]) &&
             (a.weekNumbers.isEmpty ||
                 b.weekNumbers.isEmpty ||
                 a.weekNumbers.any(b.weekNumbers.contains))) {
-          conflicts.add('${a.name} / ${b.name}');
+          final weeks =
+              (a.weekNumbers.isEmpty
+                      ? b.weekNumbers
+                      : b.weekNumbers.isEmpty
+                      ? a.weekNumbers
+                      : a.weekNumbers.where(b.weekNumbers.contains))
+                  .toSet()
+                  .toList()
+                ..sort();
+          final weekLabel = weeks.isEmpty ? '每周' : '第${weeks.join('、')}周';
+          conflicts.add(
+            '${a.name} / ${b.name}（$weekLabel，周${'一二三四五六日'[a.dayOfWeek - 1]}）',
+          );
         }
       }
     }
@@ -377,7 +663,7 @@ class AiToolExecutor {
       'revision': s.revision,
       'scheduleId': s.id,
       'summary': summary,
-      'conflicts': conflicts,
+      'conflicts': conflicts.toList(),
       'message': '已保存，可在我的→历史版本恢复',
     };
   }

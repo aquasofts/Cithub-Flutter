@@ -13,6 +13,27 @@ List<int> office(Map<String, String> entries) {
 }
 
 void main() {
+  test('UTF-16 attachments preserve Chinese text with either byte order', () {
+    const text = '课程表😀';
+    for (final little in [true, false]) {
+      final bytes = <int>[little ? 255 : 254, little ? 254 : 255];
+      for (final unit in text.codeUnits) {
+        bytes.addAll(
+          little ? [unit & 255, unit >> 8] : [unit >> 8, unit & 255],
+        );
+      }
+      expect(decodeAnyAttachment(bytes).single['text'], text);
+    }
+  });
+  test('unknown extensions retain UTF-8 or Base64 binary content', () {
+    expect(
+      decodeAnyAttachment(utf8.encode('{"course":"数学"}')).single['text'],
+      '{"course":"数学"}',
+    );
+    final binary = decodeAnyAttachment([0, 255, 1]);
+    expect(binary.single['label'], contains('Base64'));
+    expect(binary.single['text'], base64Encode([0, 255, 1]));
+  });
   test('DOCX includes table paragraphs and Chinese text', () {
     final bytes = office({
       'word/document.xml': '<w:document xmlns:w="word"><w:body><w:p><w:r><w:t>课程表</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>数学 周一1-2节</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>',

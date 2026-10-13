@@ -34,4 +34,29 @@ class RuntimeLogStoreTest {
         assertFalse(File(context.filesDir, "logs").exists())
         archive.delete()
     }
+    @Test
+    fun rollingRetentionPreservesBoundaryAndMultilineRecords() {
+        val context = RuntimeEnvironment.getApplication() as Context
+        val now = java.time.Instant.parse("2026-10-13T12:00:00Z")
+        val logger = RuntimeLogStore(context) { now }
+        logger.clear()
+        val directory = File(context.filesDir, "logs").apply { mkdirs() }
+        File(directory, "runtime.log").writeText("2026-10-12T11:59:59Z [test] expired\nold continuation\n2026-10-12T12:00:00Z [test] boundary\nraw password=密码\n2026-10-13T11:00:00Z [test] recent\n")
+        val legacy = File(directory, "runtime.log.1").apply {
+            writeText("expired legacy")
+            setLastModified(now.minusSeconds(86401).toEpochMilli())
+        }
+        val archive = logger.export()
+        ZipFile(archive).use { zip ->
+            val content = zip.getInputStream(zip.getEntry("runtime.log")).bufferedReader().readText()
+            assertFalse(content.contains("expired"))
+            assertFalse(content.contains("old continuation"))
+            assertTrue(content.contains("boundary\nraw password=密码"))
+            assertTrue(content.contains("recent"))
+        }
+        assertFalse(legacy.exists())
+        logger.clear()
+        archive.delete()
+    }
+
 }

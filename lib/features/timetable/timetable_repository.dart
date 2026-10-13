@@ -1,3 +1,5 @@
+import '../../core/logging/runtime_log.dart';
+
 import 'dart:convert';
 
 export '../../core/storage/local_database.dart' show localRevisionProvider;
@@ -7,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../../core/native/cithub_api.g.dart';
+import 'timetable_time.dart';
 import '../../core/storage/local_database.dart';
 
 Map<String, dynamic> courseJson(TimetableCourseDto c) => {
@@ -89,19 +92,32 @@ TimetableDto timetableFromJson(Map<String, dynamic> t) => TimetableDto(
 );
 
 class LocalCourse {
-  LocalCourse({required this.id, required this.source, required this.course});
+  LocalCourse({
+    required this.id,
+    required this.source,
+    required this.course,
+    this.startTime,
+    this.endTime,
+  });
   final String id;
   final String source;
   final TimetableCourseDto course;
+  final String? startTime, endTime;
   Map<String, dynamic> toJson() => {
     'localId': id,
     'source': source,
-    'course': courseJson(course),
+    'course': {
+      ...courseJson(course),
+      if (startTime != null) 'startTime': startTime,
+      if (endTime != null) 'endTime': endTime,
+    },
   };
   factory LocalCourse.fromJson(Map<String, dynamic> v) => LocalCourse(
     id: v['localId'] as String,
     source: v['source'] as String,
     course: courseFromJson(Map<String, dynamic>.from(v['course'] as Map)),
+    startTime: (v['course'] as Map)['startTime'] as String?,
+    endTime: (v['course'] as Map)['endTime'] as String?,
   );
 }
 
@@ -208,7 +224,10 @@ final activeScheduleProvider = FutureProvider<ScheduleSnapshot?>((ref) {
 class TimetableRepository {
   TimetableRepository(this.store);
   final LocalDatabase store;
-  Future<List<ScheduleSnapshot>> all() async =>
+  Future<List<ScheduleSnapshot>> all() =>
+      RuntimeLog.trace('schedule', 'list', null, _all);
+
+  Future<List<ScheduleSnapshot>> _all() async =>
       (await (await store.database).query(
             'schedules',
             orderBy: 'revision DESC',
@@ -252,59 +271,138 @@ class TimetableRepository {
     String operationId,
   ) async {
     final db = await store.database;
-    return db.transaction((txn) async {
-      final duplicate = await txn.query(
-        'schedule_versions',
-        where: 'operation_id = ?',
-        whereArgs: [operationId],
-      );
-      if (duplicate.isNotEmpty) {
-        return ScheduleSnapshot.fromJson(
-          jsonDecode(duplicate.first['body'] as String) as Map<String, dynamic>,
-        );
-      }
-      final existing = await txn.query(
-        'schedules',
-        where: 'id = ?',
-        whereArgs: [snapshot.id],
-      );
-      final currentRevision = existing.isEmpty
-          ? 0
-          : existing.first['revision'] as int;
-      if (currentRevision != snapshot.revision) {
-        throw StateError('课表已发生变化，请重新读取后再修改');
-      }
-      validate(snapshot);
-      final revision = await txn.insert('schedule_versions', {
-        'schedule_id': snapshot.id,
-        'body': jsonEncode(snapshot.toJson()),
+    return RuntimeLog.trace(
+      'schedule',
+      'save',
+      {
+        'snapshot': snapshot.toJson(),
         'summary': summary,
-        'created_at': DateTime.now().toIso8601String(),
-        'operation_id': operationId,
-      });
-      final saved = snapshot.copyWith(revision: revision);
-      await txn.update(
-        'schedule_versions',
-        {'body': jsonEncode(saved.toJson())},
-        where: 'revision = ?',
-        whereArgs: [revision],
-      );
-      await txn.insert('schedules', {
-        'id': saved.id,
-        'revision': revision,
-        'body': jsonEncode(saved.toJson()),
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-      await txn.insert('meta', {
-        'key': 'schedule.active',
-        'value': saved.id,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-      return saved;
-    });
+        'operationId': operationId,
+      },
+      () => db.transaction((txn) async {
+        final duplicate = await txn.query(
+          'schedule_versions',
+          where: 'operation_id = ?',
+          whereArgs: [operationId],
+        );
+        if (duplicate.isNotEmpty) {
+          return ScheduleSnapshot.fromJson(
+            jsonDecode(duplicate.first['body'] as String)
+                as Map<String, dynamic>,
+          );
+        }
+        final existing = await txn.query(
+          'schedules',
+          where: 'id = ?',
+          whereArgs: [snapshot.id],
+        );
+        RuntimeLog.event('schedule', 'before-save', {
+          'operationId': operationId,
+          'before': existing.isEmpty
+              ? null
+              : jsonDecode(existing.first['body'] as String),
+        });
+        final currentRevision = existing.isEmpty
+            ? 0
+            : existing.first['revision'] as int;
+        if (currentRevision != snapshot.revision) {
+          throw StateError('课表已发生变化，请重新读取后再修改');
+        }
+        validate(snapshot);
+        final revision = await txn.insert('schedule_versions', {
+          'schedule_id': snapshot.id,
+          'body': jsonEncode(snapshot.toJson()),
+          'summary': summary,
+          'created_at': DateTime.now().toIso8601String(),
+          'operation_id': operationId,
+        });
+        final saved = snapshot.copyWith(revision: revision);
+        await txn.update(
+          'schedule_versions',
+          {'body': jsonEncode(saved.toJson())},
+          where: 'revision = ?',
+          whereArgs: [revision],
+        );
+        await txn.insert('schedules', {
+          'id': saved.id,
+          'revision': revision,
+          'body': jsonEncode(saved.toJson()),
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        await txn.insert('meta', {
+          'key': 'schedule.active',
+          'value': saved.id,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        return saved;
+      }),
+    );
+  }
+
+  Future<ScheduleSnapshot> putCourse(ScheduleSnapshot s, LocalCourse course) {
+    final courses = [...s.courses];
+    final index = courses.indexWhere((c) => c.id == course.id);
+    final edits = Map<String, dynamic>.from(s.edits);
+    if (index < 0) {
+      courses.add(course);
+    } else {
+      courses[index] = course;
+    }
+    if (course.source == 'academic') {
+      edits[course.id] = {'op': 'update', 'course': course.toJson()['course']};
+    }
+    return save(
+      s.copyWith(courses: courses, edits: edits),
+      '${index < 0 ? '新增' : '修改'}课程：${course.course.name}',
+      localId(),
+    );
+  }
+
+  Future<ScheduleSnapshot> removeCourse(
+    ScheduleSnapshot s,
+    LocalCourse course,
+  ) {
+    final edits = Map<String, dynamic>.from(s.edits);
+    if (course.source == 'academic') {
+      edits[course.id] = {'op': 'delete', 'course': course.toJson()['course']};
+    }
+    return save(
+      s.copyWith(
+        courses: s.courses.where((c) => c.id != course.id).toList(),
+        edits: edits,
+      ),
+      '删除课程：${course.course.name}',
+      localId(),
+    );
   }
 
   void validate(ScheduleSnapshot s) {
+    for (final entry in s.sectionTimes.entries) {
+      final index = int.tryParse(entry.key);
+      final parts = entry.value is String
+          ? (entry.value as String).trim().split(RegExp(r'[\n–-]+'))
+          : <String>[];
+      if (index == null ||
+          index < 1 ||
+          index > 30 ||
+          parts.length != 2 ||
+          LessonTime.parse(parts[0], parts[1]) == null) {
+        throw const FormatException('节次时间无效');
+      }
+    }
+    final clock = TimetableTime(s);
+    var previousEnd = -1;
+    for (var i = 1; i <= clock.sectionCount; i++) {
+      final time = clock.section(i);
+      if (time == null) continue;
+      if (time.start < previousEnd) throw const FormatException('节次时间不能重叠或倒序');
+      previousEnd = time.end;
+    }
+
     for (final item in s.courses) {
       final c = item.course;
+      if ((item.startTime != null || item.endTime != null) &&
+          LessonTime.parse(item.startTime, item.endTime) == null) {
+        throw const FormatException('课程时间需填写有效的开始和结束时间');
+      }
       if (c.name.trim().isEmpty ||
           c.dayOfWeek < 1 ||
           c.dayOfWeek > 7 ||
@@ -391,13 +489,15 @@ class TimetableRepository {
                 ? LocalCourse(
                     id: c.id,
                     source: 'academic',
+                    startTime: edits[c.id]['course']['startTime'] as String?,
+                    endTime: edits[c.id]['course']['endTime'] as String?,
                     course: courseFromJson(
                       Map<String, dynamic>.from(edits[c.id]['course'] as Map),
                     ),
                   )
                 : c,
           ),
-      ...base.courses.where((c) => c.source == 'ai'),
+      ...base.courses.where((c) => c.source != 'academic'),
     ];
     return save(
       base.copyWith(
@@ -428,7 +528,14 @@ class TimetableRepository {
     );
   }
 
-  Future<void> clearHistory(String id) async {
+  Future<void> clearHistory(String id) => RuntimeLog.trace(
+    'schedule',
+    'clearHistory',
+    {'id': id},
+    () => _clearHistory(id),
+  );
+
+  Future<void> _clearHistory(String id) async {
     final current = (await all()).firstWhere((s) => s.id == id);
     await (await store.database).delete(
       'schedule_versions',

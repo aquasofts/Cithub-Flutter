@@ -1,6 +1,7 @@
 import 'package:cithub_flutter/app/cithub_app.dart';
 import 'package:cithub_flutter/core/platform/cithub_platform.dart';
 import 'package:cithub_flutter/core/platform/demo_cithub_platform.dart';
+import 'package:flutter/material.dart' show BackButton;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -45,7 +46,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('这是主题内容。'), findsOneWidget);
 
-    await tester.pageBack();
+    await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
     expect(find.text('长春工程学院吧'), findsOneWidget);
   });

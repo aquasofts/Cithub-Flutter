@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
+import '../logging/logged_preferences.dart';
 
 const defaultTiebaHomeForum = '长春工程学院';
 
@@ -37,6 +38,16 @@ class AppSettings {
   final bool compactNavigation;
   final String tiebaHomeForumName;
 
+  Map<String, Object?> toJson() => {
+    'themeMode': themeMode.name,
+    'seedColor': seedColor.toARGB32(),
+    'amoled': amoled,
+    'reduceMotion': reduceMotion,
+    'themedIcon': themedIcon,
+    'compactNavigation': compactNavigation,
+    'tiebaHomeForumName': tiebaHomeForumName,
+  };
+
   AppSettings copyWith({
     ThemeMode? themeMode,
     Color? seedColor,
@@ -62,7 +73,7 @@ class AppSettingsController extends StateNotifier<AppSettings> {
   }
 
   Future<void> _restore() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await LoggedPreferences.getInstance();
     final themeName = prefs.getString('appearance.themeMode');
     ThemeMode? themeMode;
     for (final item in ThemeMode.values) {
@@ -85,7 +96,7 @@ class AppSettingsController extends StateNotifier<AppSettings> {
 
   Future<void> setThemeMode(ThemeMode value) async {
     state = state.copyWith(themeMode: value);
-    await (await SharedPreferences.getInstance()).setString(
+    await (await LoggedPreferences.getInstance()).setString(
       'appearance.themeMode',
       value.name,
     );
@@ -93,7 +104,7 @@ class AppSettingsController extends StateNotifier<AppSettings> {
 
   Future<void> setSeedColor(Color value) async {
     state = state.copyWith(seedColor: value);
-    await (await SharedPreferences.getInstance()).setInt(
+    await (await LoggedPreferences.getInstance()).setInt(
       'appearance.seedColor',
       value.toARGB32(),
     );
@@ -101,7 +112,7 @@ class AppSettingsController extends StateNotifier<AppSettings> {
 
   Future<void> setAmoled(bool value) async {
     state = state.copyWith(amoled: value);
-    await (await SharedPreferences.getInstance()).setBool(
+    await (await LoggedPreferences.getInstance()).setBool(
       'appearance.amoled',
       value,
     );
@@ -109,7 +120,7 @@ class AppSettingsController extends StateNotifier<AppSettings> {
 
   Future<void> setReduceMotion(bool value) async {
     state = state.copyWith(reduceMotion: value);
-    await (await SharedPreferences.getInstance()).setBool(
+    await (await LoggedPreferences.getInstance()).setBool(
       'appearance.reduceMotion',
       value,
     );
@@ -117,7 +128,7 @@ class AppSettingsController extends StateNotifier<AppSettings> {
 
   Future<void> setThemedIcon(bool value) async {
     state = state.copyWith(themedIcon: value);
-    await (await SharedPreferences.getInstance()).setBool(
+    await (await LoggedPreferences.getInstance()).setBool(
       'appearance.themedIcon',
       value,
     );
@@ -125,7 +136,7 @@ class AppSettingsController extends StateNotifier<AppSettings> {
 
   Future<void> setCompactNavigation(bool value) async {
     state = state.copyWith(compactNavigation: value);
-    await (await SharedPreferences.getInstance()).setBool(
+    await (await LoggedPreferences.getInstance()).setBool(
       'appearance.compactNavigation',
       value,
     );
@@ -137,7 +148,7 @@ class AppSettingsController extends StateNotifier<AppSettings> {
       throw ArgumentError.value(value, 'value', '吧名不能为空');
     }
     state = state.copyWith(tiebaHomeForumName: normalized);
-    await (await SharedPreferences.getInstance()).setString(
+    await (await LoggedPreferences.getInstance()).setString(
       'tieba.homeForumName',
       normalized,
     );

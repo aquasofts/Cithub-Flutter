@@ -1,3 +1,5 @@
+import '../logging/runtime_log.dart';
+
 import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -39,7 +41,10 @@ class LocalDatabase {
       },
     ),
   );
-  Future<String?> getMeta(String key) async {
+  Future<String?> getMeta(String key) =>
+      RuntimeLog.trace('storage', 'getMeta', {'key': key}, () => _getMeta(key));
+
+  Future<String?> _getMeta(String key) async {
     final rows = await (await database).query(
       'meta',
       where: 'key = ?',
@@ -48,9 +53,13 @@ class LocalDatabase {
     return rows.isEmpty ? null : rows.first['value'] as String;
   }
 
-  Future<void> setMeta(String key, String value) async =>
-      (await database).insert('meta', {
-        'key': key,
-        'value': value,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+  Future<void> setMeta(String key, String value) => RuntimeLog.trace(
+    'storage',
+    'setMeta',
+    {'key': key, 'value': value},
+    () async => (await database).insert('meta', {
+      'key': key,
+      'value': value,
+    }, conflictAlgorithm: ConflictAlgorithm.replace),
+  );
 }

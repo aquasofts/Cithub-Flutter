@@ -83,6 +83,49 @@ void main() {
     expect(s.edits, isEmpty);
     expect(s.official.single.id, officialId);
   });
+  test('manual courses and actual time edits survive refresh and history restoration', () async {
+    var s = await repo.importAcademic('student', timetable());
+    final original = s.courses.single;
+    s = await repo.putCourse(
+      s,
+      LocalCourse(
+        id: original.id,
+        source: original.source,
+        course: courseFromJson({
+          ...courseJson(original.course),
+          'name': '修改后的数学',
+        }),
+        startTime: '08:15',
+        endTime: '09:50',
+      ),
+    );
+    final manual = LocalCourse(
+      id: 'manual',
+      source: 'manual',
+      course: timetable(name: '语文').courses.first,
+      startTime: '10:00',
+      endTime: '10:45',
+    );
+    s = await repo.putCourse(s, manual);
+    final version = s;
+    s = await repo.importAcademic(
+      'student',
+      timetable(location: 'B201'),
+      preserve: [original.id],
+      expectedRevision: s.revision,
+    );
+    expect(s.courses.firstWhere((c) => c.id == original.id).startTime, '08:15');
+    expect(s.courses.firstWhere((c) => c.id == manual.id).source, 'manual');
+    s = await repo.removeCourse(
+      s,
+      s.courses.firstWhere((c) => c.id == manual.id),
+    );
+    expect(s.courses.any((c) => c.id == manual.id), false);
+    s = await repo.restore(version);
+    expect(s.courses.firstWhere((c) => c.id == manual.id).endTime, '10:45');
+    expect((await repo.history(s.id)).length, greaterThanOrEqualTo(6));
+  });
+
   test('transaction rejects stale revisions and invalid courses; operation IDs are idempotent', () async {
     final s = await repo.importAcademic('student', timetable());
     final changed = await repo.save(s.copyWith(courses: []), '清空', 'change');

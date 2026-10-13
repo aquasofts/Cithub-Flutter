@@ -111,7 +111,7 @@ void main() {
     await settle(tester);
     expect(find.text('这是主题内容。'), findsOneWidget);
 
-    await tester.pageBack();
+    await tester.tap(find.byType(BackButton));
     await settle(tester);
     expect(find.text('长春工程学院吧'), findsOneWidget);
     expect(find.text('这是主题内容。'), findsNothing);
@@ -518,6 +518,8 @@ void main() {
       ),
     ];
     SharedPreferences.setMockInitialValues({
+      'news.updated.wechat': DateTime.now().toIso8601String(),
+      'news.updated.campus': DateTime.now().toIso8601String(),
       'news.cache.v1': jsonEncode(
         articles.map((article) => article.toJson()).toList(),
       ),

@@ -1,3 +1,7 @@
+import 'package:cached_network_image/cached_network_image.dart';
+
+import '../../core/logging/runtime_audit.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -31,8 +35,9 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen>
   }
 
   Future<void> _openTiebaLogin() async {
-    await Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => const TiebaLoginScreen()));
+    await Navigator.of(
+      context,
+    ).push(LoggedMaterialPageRoute(builder: (_) => const TiebaLoginScreen()));
     if (mounted) {
       setState(() {
         _tieba = ref.read(cithubPlatformProvider).currentTiebaAccount();
@@ -202,7 +207,7 @@ class _TiebaProfileCard extends StatelessWidget {
                   radius: 34,
                   backgroundImage: value.avatarUrl.isEmpty
                       ? null
-                      : NetworkImage(value.avatarUrl),
+                      : CachedNetworkImageProvider(value.avatarUrl),
                   child: value.avatarUrl.isEmpty
                       ? Text(_initial(value.nickname))
                       : null,

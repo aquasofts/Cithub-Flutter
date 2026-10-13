@@ -1,4 +1,7 @@
+import '../core/logging/runtime_audit.dart';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/settings/app_settings.dart';
@@ -13,6 +16,12 @@ class CithubApp extends ConsumerWidget {
     final settings = ref.watch(appSettingsProvider);
     return MaterialApp(
       title: 'Cithub Flutter',
+      navigatorObservers: [RuntimeNavigatorObserver()],
+      builder: (context, child) =>
+          RuntimeAudit(child: child ?? const SizedBox.shrink()),
+      locale: const Locale('zh', 'CN'),
+      supportedLocales: const [Locale('zh', 'CN')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       debugShowCheckedModeBanner: false,
       theme: buildCithubTheme(settings, Brightness.light),
       darkTheme: buildCithubTheme(settings, Brightness.dark),

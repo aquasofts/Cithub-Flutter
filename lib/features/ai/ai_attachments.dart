@@ -1,3 +1,5 @@
+import '../../core/logging/runtime_log.dart';
+
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
@@ -54,11 +56,23 @@ class AiAttachment {
     int index,
     bool supportsImages,
     AiCancellation cancellation,
+  ) => RuntimeLog.trace('attachment', 'read', {
+    'attachment': manifest,
+    'block': index,
+    'supportsImages': supportsImages,
+  }, () => _read(index, supportsImages, cancellation));
+
+  Future<Map<String, dynamic>> _read(
+    int index,
+    bool supportsImages,
+    AiCancellation cancellation,
   ) async {
     cancellation.check();
     if (image) {
+      if (index != 0) throw RangeError('图片仅包含第0块');
       if (!supportsImages) throw StateError('请选择支持图片的模型');
       final bytes = await File(path).readAsBytes();
+      cancellation.check();
       return {
         'filename': name,
         'image':
@@ -222,27 +236,30 @@ List<Map<String, dynamic>> extractOffice(List<int> bytes, String extension) {
 Future<AiAttachment> importAttachment(
   PlatformFile file,
   AiCancellation cancellation,
+) => RuntimeLog.trace('attachment', 'import', {
+  'name': file.name,
+  'path': file.path,
+}, () => _importAttachment(file, cancellation));
+
+Future<AiAttachment> _importAttachment(
+  PlatformFile file,
+  AiCancellation cancellation,
 ) async {
   cancellation.check();
   if ((await file.length()) > 20 * 1024 * 1024) {
     throw const FormatException('单文件不能超过 20 MB');
   }
-  final extension = file.name.split('.').last.toLowerCase();
-  if (![
-    'jpg',
-    'jpeg',
-    'png',
-    'webp',
-    'txt',
-    'md',
-    'csv',
-    'pdf',
-    'docx',
-    'xlsx',
-  ].contains(extension)) {
-    throw const FormatException('不支持该文件格式，请使用图片、文字、PDF、DOCX 或 XLSX');
-  }
+  final suffix = file.name.contains('.')
+      ? file.name.split('.').last.toLowerCase()
+      : '';
+  final extension = RegExp(r'^[a-z0-9]{1,16}$').hasMatch(suffix)
+      ? suffix
+      : 'bin';
   final bytes = await file.readAsBytes();
+  RuntimeLog.event('attachment', 'bytes-read', {
+    'name': file.name,
+    'bytesBase64': base64Encode(bytes),
+  });
   if (bytes.length > 20 * 1024 * 1024) {
     throw const FormatException('单文件不能超过 20 MB');
   }
@@ -250,11 +267,14 @@ Future<AiAttachment> importAttachment(
   final directory = Directory(
     '${(await getApplicationSupportDirectory()).path}/ai_attachments/$id',
   );
-  await directory.create(recursive: true);
   final path = '${directory.path}/file.$extension';
-  await File(path).writeAsBytes(bytes);
   try {
-    final isImage = ['jpg', 'jpeg', 'png', 'webp'].contains(extension);
+    await directory.create(recursive: true);
+    await File(path).writeAsBytes(bytes);
+    cancellation.check();
+    final isImage =
+        isImageAttachment(bytes) ||
+        ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'].contains(extension);
     final blocks = <Map<String, dynamic>>[];
     if (isImage) {
       final codec = await ui.instantiateImageCodecWithSize(
@@ -275,6 +295,7 @@ Future<AiAttachment> importAttachment(
           );
           final imagePath = '${directory.path}/image.png';
           await File(imagePath).writeAsBytes(png!.buffer.asUint8List());
+          cancellation.check();
           return AiAttachment(
             id: id,
             name: file.name,
@@ -288,7 +309,8 @@ Future<AiAttachment> importAttachment(
       } finally {
         codec.dispose();
       }
-    } else if (extension == 'pdf') {
+    } else if (extension == 'pdf' ||
+        bytes.take(5).join(',') == '37,80,68,70,45') {
       final document = await PdfDocument.openFile(path);
       try {
         for (final page in document.pages) {
@@ -309,17 +331,65 @@ Future<AiAttachment> importAttachment(
     } else if (extension == 'docx' || extension == 'xlsx') {
       blocks.addAll(await Isolate.run(() => extractOffice(bytes, extension)));
     } else {
-      blocks.addAll(textBlocks(utf8.decode(bytes), '正文'));
+      blocks.addAll(decodeAnyAttachment(bytes));
     }
     cancellation.check();
     return AiAttachment(id: id, name: file.name, path: path, blocks: blocks);
   } catch (_) {
-    await directory.delete(recursive: true);
+    if (await directory.exists()) await directory.delete(recursive: true);
     rethrow;
   }
 }
 
-Future<void> deleteAttachment(AiAttachment attachment) async {
+bool isImageAttachment(List<int> bytes) {
+  bool starts(List<int> prefix) =>
+      bytes.length >= prefix.length &&
+      List.generate(
+        prefix.length,
+        (i) => bytes[i] == prefix[i],
+      ).every((v) => v);
+  return starts([137, 80, 78, 71, 13, 10, 26, 10]) ||
+      starts([255, 216, 255]) ||
+      starts([71, 73, 70, 56]) ||
+      starts([66, 77]) ||
+      (starts([82, 73, 70, 70]) &&
+          bytes.length >= 12 &&
+          ascii.decode(bytes.sublist(8, 12), allowInvalid: true) == 'WEBP');
+}
+
+List<Map<String, dynamic>> decodeAnyAttachment(List<int> bytes) {
+  if (bytes.length >= 2 &&
+      bytes.length.isEven &&
+      ((bytes[0] == 255 && bytes[1] == 254) ||
+          (bytes[0] == 254 && bytes[1] == 255))) {
+    final little = bytes[0] == 255;
+    final text = String.fromCharCodes([
+      for (var i = 2; i < bytes.length; i += 2)
+        little
+            ? bytes[i] | (bytes[i + 1] << 8)
+            : (bytes[i] << 8) | bytes[i + 1],
+    ]);
+    if (!text.contains('\u0000') && utf8.decode(utf8.encode(text)) == text) {
+      return textBlocks(text, '正文');
+    }
+  }
+  try {
+    final text = utf8.decode(bytes);
+    if (!text.contains('\u0000')) return textBlocks(text, '正文');
+  } on FormatException {
+    // Unknown binary formats remain available for explicit block reads.
+  }
+  return textBlocks(base64Encode(bytes), '原始二进制 Base64');
+}
+
+Future<void> deleteAttachment(AiAttachment attachment) => RuntimeLog.trace(
+  'attachment',
+  'delete',
+  attachment.toJson(),
+  () => _deleteAttachment(attachment),
+);
+
+Future<void> _deleteAttachment(AiAttachment attachment) async {
   final directory = File(attachment.path).parent;
   if (await directory.exists()) await directory.delete(recursive: true);
 }

@@ -1,8 +1,11 @@
+import '../../core/logging/runtime_audit.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../core/logging/logged_preferences.dart';
 
 import '../../core/platform/cithub_platform.dart';
 import '../../core/logging/runtime_log.dart';
@@ -11,6 +14,7 @@ import '../../core/native/cithub_api.g.dart';
 import '../../core/settings/app_settings.dart';
 import 'account_settings_screen.dart';
 import '../ai/ai_settings_screen.dart';
+import '../timetable/timetable_editor_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -28,6 +32,12 @@ class SettingsScreen extends StatelessWidget {
               title: '账号与关于',
               subtitle: '贴吧、WebVPN、登录与退出',
               page: const Scaffold(body: AccountSettingsScreen()),
+            ),
+            _SettingsLink(
+              icon: Icons.edit_calendar_outlined,
+              title: '修改课表',
+              subtitle: '手动增删课程、修改周次与上课时间',
+              page: const TimetableEditorScreen(),
             ),
             _SettingsLink(
               icon: Icons.auto_awesome_outlined,
@@ -200,7 +210,7 @@ class _RssSettingsScreenState extends State<RssSettingsScreen> {
   }
 
   Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await LoggedPreferences.getInstance();
     if (!mounted) return;
     setState(() {
       _wechat = prefs.getStringList('rss.wechat') ?? _wechat;
@@ -209,7 +219,7 @@ class _RssSettingsScreenState extends State<RssSettingsScreen> {
   }
 
   Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await LoggedPreferences.getInstance();
     await prefs.setStringList('rss.wechat', _wechat);
     await prefs.setStringList('rss.campus', _campus);
   }
@@ -302,7 +312,7 @@ class _TiebaSettingsScreenState extends ConsumerState<TiebaSettingsScreen> {
   }
 
   Future<void> _load() async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await LoggedPreferences.getInstance();
     if (!mounted) return;
     setState(() {
       _originalImages = preferences.getBool('tieba.originalImages') ?? false;
@@ -312,7 +322,7 @@ class _TiebaSettingsScreenState extends ConsumerState<TiebaSettingsScreen> {
   }
 
   Future<void> _set(String key, bool value) async {
-    await (await SharedPreferences.getInstance()).setBool(key, value);
+    await (await LoggedPreferences.getInstance()).setBool(key, value);
   }
 
   Future<void> _editHomeForum() async {
@@ -649,7 +659,7 @@ class _RuntimeLogScreenState extends ConsumerState<RuntimeLogScreen> {
           child: Padding(
             padding: EdgeInsets.all(20),
             child: Text(
-              '应用诊断日志持续保存在本机，重启后保留，不自动删减或上传。导出包含所有已保存的历史日志，使用 ZIP 格式，不做脱敏；请求、响应、账号及会话等原始内容会完整保留。',
+              '完整运行日志保存在本机，保留最近 24 小时，过期记录自动清理，重启后继续保留，不自动上传。记录页面访问、交互、手动修改、AI 操作及网络请求和响应。导出最近 24 小时的日志 ZIP，不做脱敏；账号、输入及会话等原始内容会保留。',
             ),
           ),
         ),
@@ -711,7 +721,8 @@ class _SettingsLink extends StatelessWidget {
     subtitle: Text(subtitle),
     trailing: const Icon(Icons.chevron_right),
     onTap: () =>
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => page)),
+        Navigator.of(context)
+            .push(LoggedMaterialPageRoute(builder: (_) => page)),
   );
 }
 

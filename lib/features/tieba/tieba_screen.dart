@@ -1,3 +1,6 @@
+import '../../core/logging/runtime_audit.dart';
+import '../../core/logging/runtime_log.dart';
+
 import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -247,6 +250,10 @@ class _TiebaScreenState extends ConsumerState<TiebaScreen>
                     label: Text(['最新', '精品', '公众号', '校内新闻', '官方新闻'][i]),
                     selected: _section == i,
                     onSelected: (_) {
+                      RuntimeLog.event('navigation', 'tieba-section', {
+                        'from': _section,
+                        'to': i,
+                      });
                       setState(() => _section = i);
                       if (i < 2 && _goodOnly != (i == 1)) {
                         _goodOnly = i == 1;
@@ -268,6 +275,7 @@ class _TiebaScreenState extends ConsumerState<TiebaScreen>
                 NewsScreen(
                   key: PageStorageKey('embedded-${section.name}'),
                   fixedSection: section,
+                  active: _section == section.index + 2,
                 ),
             ],
           ),
@@ -312,7 +320,7 @@ class _TiebaScreenState extends ConsumerState<TiebaScreen>
               itemBuilder: (context, index) => _ThreadTile(
                 thread: regular[index],
                 onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
+                  LoggedMaterialPageRoute(
                     builder: (_) => ThreadScreen(thread: regular[index]),
                   ),
                 ),
@@ -373,7 +381,9 @@ class _ForumNoticeRows extends ConsumerWidget {
           label: '置顶',
           text: thread.title,
           onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => ThreadScreen(thread: thread)),
+            LoggedMaterialPageRoute(
+              builder: (_) => ThreadScreen(thread: thread),
+            ),
           ),
         ),
       if (forum.forumRuleTitle.isNotEmpty || pinned.isNotEmpty)
@@ -951,7 +961,7 @@ class _FloorCard extends ConsumerWidget {
                   onTap: floor.authorId <= 0
                       ? null
                       : () => Navigator.of(context).push(
-                          MaterialPageRoute(
+                          LoggedMaterialPageRoute(
                             builder: (_) =>
                                 _TiebaProfileScreen(uid: floor.authorId),
                           ),
@@ -1077,7 +1087,7 @@ class _FloorReplyPreview extends StatelessWidget {
   final List<FloorReplyDto> replies;
 
   void _open(BuildContext context) => Navigator.of(context).push(
-    MaterialPageRoute(
+    LoggedMaterialPageRoute(
       builder: (_) => FloorRepliesScreen(
         threadId: threadId,
         forumId: forumId,
@@ -1447,7 +1457,7 @@ class _TiebaContent extends ConsumerWidget {
             key: Key('tieba-floor-image-$currentIndex'),
             onTap: () {
               Navigator.of(context).push(
-                MaterialPageRoute(
+                LoggedMaterialPageRoute(
                   builder: (_) => _TiebaImageScreen(
                     previewUrls: images.map((image) => image.url).toList(),
                     requests: imageRequests,
@@ -1819,7 +1829,7 @@ class _UserPostsSection extends StatelessWidget {
               onTap: posts[index].threadId <= 0
                   ? null
                   : () => Navigator.of(context).push(
-                      MaterialPageRoute(
+                      LoggedMaterialPageRoute(
                         builder: (_) => ThreadScreen(
                           thread: ForumThreadDto(
                             id: '${posts[index].threadId}',
@@ -1990,7 +2000,13 @@ class _TiebaImageScreenState extends State<_TiebaImageScreen> {
   Future<void> _save() async {
     try {
       final url = await _resolve(_index);
-      final response = await http.get(Uri.parse(url));
+      final client = LoggingHttpClient(http.Client());
+      final http.Response response;
+      try {
+        response = await client.get(Uri.parse(url));
+      } finally {
+        client.close();
+      }
       if (response.statusCode != 200) {
         throw StateError('HTTP ${response.statusCode}');
       }
@@ -2364,7 +2380,7 @@ class _ForumSearchResultsState extends State<_ForumSearchResults> {
         return _ThreadTile(
           thread: _threads[index],
           onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
+            LoggedMaterialPageRoute(
               builder: (_) => ThreadScreen(thread: _threads[index]),
             ),
           ),

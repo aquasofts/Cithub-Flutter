@@ -1,3 +1,6 @@
+import '../../core/logging/web_audit.dart';
+import '../../core/logging/runtime_log.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -37,22 +40,39 @@ class _TiebaLoginScreenState extends ConsumerState<TiebaLoginScreen> {
     super.initState();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..addJavaScriptChannel(
+        'CithubAudit',
+        onMessageReceived: (message) =>
+            RuntimeLog.write('tieba-web-audit', message.message),
+      )
       ..setUserAgent(tiebaMobileUserAgent)
       ..setNavigationDelegate(
         NavigationDelegate(
-          onPageStarted: (_) {
+          onPageStarted: (url) {
+            RuntimeLog.event('tieba-web', 'start', {'url': url});
             if (mounted) setState(() => _loading = true);
           },
-          onPageFinished: (url) {
+          onPageFinished: (url) async {
+            RuntimeLog.event('tieba-web', 'finish', {'url': url});
+            await _controller.runJavaScript(webAuditScript);
             if (mounted) setState(() => _loading = false);
             _maybeComplete(url);
           },
           onWebResourceError: (error) {
+            RuntimeLog.event('tieba-web', 'failure', {
+              'url': error.url,
+              'code': error.errorCode,
+              'description': error.description,
+            });
             if (mounted && error.isForMainFrame == true) {
               setState(() => _error = error.description);
             }
           },
           onNavigationRequest: (request) {
+            RuntimeLog.event('tieba-web', 'navigation', {
+              'url': request.url,
+              'mainFrame': request.isMainFrame,
+            });
             final uri = Uri.tryParse(request.url);
             return uri != null && uri.scheme == 'https'
                 ? NavigationDecision.navigate

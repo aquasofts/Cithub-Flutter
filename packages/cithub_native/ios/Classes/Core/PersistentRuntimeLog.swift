@@ -1,14 +1,18 @@
 import Foundation
 
-/// Append-only local diagnostics. No automatic retention limit or redaction.
+/// Complete local diagnostics retained for a rolling 24 hours, without redaction.
 public actor PersistentRuntimeLog: RuntimeLogger {
     public static let shared = PersistentRuntimeLog()
     private let directory: URL
     private var writeError: Error?
     private var migratedLegacy = false
     private let legacyURL: URL?
+    private let now: @Sendable () -> Date
+    private var lastPrune: Date?
+    private static let retention: TimeInterval = 24 * 60 * 60
 
-    public init(directory: URL? = nil) {
+    public init(directory: URL? = nil, now: @escaping @Sendable () -> Date = { Date() }) {
+        self.now = now
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         self.directory = directory ?? base.appendingPathComponent("cithub-logs", isDirectory: true)
@@ -27,6 +31,9 @@ public actor PersistentRuntimeLog: RuntimeLogger {
                     }
                 }
             }
+            if lastPrune == nil || now().timeIntervalSince(lastPrune!) >= 60 {
+                try prune()
+            }
             let url = directory.appendingPathComponent("runtime.log")
             if !FileManager.default.fileExists(atPath: url.path) {
                 guard FileManager.default.createFile(atPath: url.path, contents: nil) else {
@@ -36,7 +43,9 @@ public actor PersistentRuntimeLog: RuntimeLogger {
             let handle = try FileHandle(forWritingTo: url)
             defer { try? handle.close() }
             try handle.seekToEnd()
-            let timestamp = ISO8601DateFormatter().string(from: Date())
+            let timestampFormatter = ISO8601DateFormatter()
+            timestampFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            let timestamp = timestampFormatter.string(from: now())
             try handle.write(contentsOf: Data("[\(timestamp)] [\(source)] \(message)\n".utf8))
             try handle.synchronize()
         } catch {
@@ -48,12 +57,54 @@ public actor PersistentRuntimeLog: RuntimeLogger {
     public func export() async throws -> String {
         await append(source: "runtime", message: "Exporting all retained logs as ZIP; redaction=false")
         if let writeError { throw writeError }
+        try prune()
+        try pruneExports()
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isRegularFileKey])
             .filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
         let target = FileManager.default.temporaryDirectory.appendingPathComponent("cithub-logs-\(UUID().uuidString).zip")
         try StoredZip.write(files: files, to: target)
         return target.path
+    }
+
+    /// Legacy multiline entries are kept with their timestamped first line.
+    /// Untimestamped historical files use their modification time during migration.
+    private func prune() throws {
+        let cutoff = now().addingTimeInterval(-Self.retention)
+        let formatter = ISO8601DateFormatter()
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        for url in try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey]) {
+            let values = try url.resourceValues(forKeys: [.contentModificationDateKey, .isRegularFileKey])
+            guard values.isRegularFile == true else { continue }
+            let text = try String(contentsOf: url, encoding: .utf8)
+            var keep = (values.contentModificationDate ?? .distantPast) >= cutoff
+            var retained = ""
+            for line in text.split(separator: "\n", omittingEmptySubsequences: false).dropLast(text.hasSuffix("\n") ? 1 : 0) {
+                if line.hasPrefix("["), let end = line.firstIndex(of: "]"),
+                   let date = fractionalFormatter.date(from: String(line[line.index(after: line.startIndex)..<end]))
+                    ?? formatter.date(from: String(line[line.index(after: line.startIndex)..<end])) {
+                    keep = date >= cutoff
+                }
+                if keep { retained += line + "\n" }
+            }
+            if retained.isEmpty {
+                try FileManager.default.removeItem(at: url)
+            } else if retained != text && retained != text + "\n" {
+                try Data(retained.utf8).write(to: url, options: .atomic)
+            }
+        }
+        lastPrune = now()
+    }
+
+    private func pruneExports() throws {
+        let cutoff = now().addingTimeInterval(-Self.retention)
+        for url in try FileManager.default.contentsOfDirectory(at: FileManager.default.temporaryDirectory, includingPropertiesForKeys: [.contentModificationDateKey]) {
+            guard url.lastPathComponent.hasPrefix("cithub-logs-"), url.pathExtension == "zip" else { continue }
+            if (try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate ?? .distantPast) < cutoff {
+                try FileManager.default.removeItem(at: url)
+            }
+        }
     }
 
     public func clear() throws {
@@ -64,6 +115,7 @@ public actor PersistentRuntimeLog: RuntimeLogger {
             try FileManager.default.removeItem(at: directory)
         }
         writeError = nil
+        lastPrune = nil
     }
 }
 

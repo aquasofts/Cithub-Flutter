@@ -1,3 +1,6 @@
+import '../../core/logging/runtime_log.dart';
+import '../../core/logging/runtime_audit.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -104,9 +107,13 @@ class _MainShellState extends ConsumerState<MainShell> {
                 enabled: index == _index,
                 child: Navigator(
                   key: _navigators[index],
-                  observers: [_navigatorObservers[index]],
-                  onGenerateRoute: (_) =>
-                      MaterialPageRoute<void>(builder: (_) => _roots[index]),
+                  observers: [
+                    _navigatorObservers[index],
+                    RuntimeNavigatorObserver('tab:$index'),
+                  ],
+                  onGenerateRoute: (_) => LoggedMaterialPageRoute<void>(
+                    builder: (_) => _roots[index],
+                  ),
                 ),
               ),
             ),
@@ -119,6 +126,11 @@ class _MainShellState extends ConsumerState<MainShell> {
               : const Duration(milliseconds: 350),
           destinations: _destinations,
           onDestinationSelected: (value) {
+            RuntimeLog.event('navigation', 'tab-selected', {
+              'from': _index,
+              'to': value,
+              'page': '${_roots[value].runtimeType}',
+            });
             if (value == _index) {
               _navigators[value].currentState?.popUntil(
                 (route) => route.isFirst,
